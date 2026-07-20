@@ -11,12 +11,19 @@ import { syncSetupDatabase, isConfigured } from '../utils/gasApi';
 
 interface GasDeveloperProps {
   onSync?: () => void;
+  onResetData?: () => void;
+  onUploadLocalData?: () => Promise<{ success: boolean; message: string }>;
 }
 
-export default function GasDeveloper({ onSync }: GasDeveloperProps) {
+export default function GasDeveloper({ onSync, onResetData, onUploadLocalData }: GasDeveloperProps) {
   const [activeSubTab, setActiveSubTab] = useState<'quick' | 'guide' | 'gs' | 'html' | 'js'>('quick');
   const [copied, setCopied] = useState(false);
   const [quickCopied, setQuickCopied] = useState(false);
+
+  const [isResetting, setIsResetting] = useState(false);
+  const [resetSuccess, setResetSuccess] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadResult, setUploadResult] = useState<{ success: boolean; message: string } | null>(null);
 
   // Connection settings states loaded from localStorage
   const [webAppUrl, setWebAppUrl] = useState(() => localStorage.getItem('gas_web_app_url') || '');
@@ -241,6 +248,34 @@ export default function GasDeveloper({ onSync }: GasDeveloperProps) {
     await new Promise(r => setTimeout(r, 400));
     addLog(`🏁 สรุปผลการวินิจฉัย: ระบบพัสดุทำงานได้สมบูรณ์แบบ 100%!`);
     setIsTesting(false);
+  };
+
+  const handleResetDataClick = () => {
+    if (window.confirm('⚠️ คุณแน่ใจหรือไม่ว่าต้องการล้างข้อมูลพัสดุและรายการตัวอย่างทั้งหมดออกจากระบบ? การกระทำนี้จะไม่สามารถย้อนกลับได้')) {
+      setIsResetting(true);
+      onResetData?.();
+      setTimeout(() => {
+        setIsResetting(false);
+        setResetSuccess(true);
+        setTimeout(() => setResetSuccess(false), 3000);
+        setDiagnosticLogs(prev => [`[${new Date().toLocaleTimeString()}] 🗑️ ทำการล้างข้อมูลอุปกรณ์และประวัติการเคลื่อนไหวทั้งหมดเสร็จสิ้น ตอนนี้สโตร์ว่างพร้อมลงข้อมูลจริงแล้ว!`, ...prev]);
+      }, 500);
+    }
+  };
+
+  const handleUploadLocalClick = async () => {
+    if (!onUploadLocalData) return;
+    setIsUploading(true);
+    setUploadResult(null);
+    try {
+      const res = await onUploadLocalData();
+      setUploadResult(res);
+      setDiagnosticLogs(prev => [`[${new Date().toLocaleTimeString()}] ${res.success ? '✅' : '❌'} ดำเนินการย้ายข้อมูลโลคอลขึ้นคลาวด์: ${res.message}`, ...prev]);
+    } catch (err: any) {
+      setUploadResult({ success: false, message: err.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อ' });
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   return (
@@ -617,6 +652,98 @@ export default function GasDeveloper({ onSync }: GasDeveloperProps) {
                   <RefreshCw className="h-3.5 w-3.5" />
                   สั่งดึงข้อมูลล่าสุดจาก Google Sheets ทันที
                 </button>
+              )}
+            </div>
+
+            {/* NEW DATABASE OPERATIONS & TEMPLATE COPY CARD */}
+            <div className="bg-white border border-slate-200 rounded-3xl p-5 md:p-6 space-y-4.5 shadow-sm">
+              <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                <Settings className="h-3.5 w-3.5 text-orange-500 animate-pulse" />
+                4. จัดการตารางพัสดุและทำสำเนาชีตเริ่มต้น
+              </span>
+
+              {/* Template Copy Block */}
+              <div className="p-4 bg-amber-50/70 border border-amber-200/60 rounded-2xl space-y-3">
+                <div className="space-y-1">
+                  <h5 className="font-extrabold text-slate-800 text-xs md:text-sm flex items-center gap-1.5">
+                    📥 ทำสำเนา Google Sheets ต้นแบบสำเร็จรูป
+                  </h5>
+                  <p className="text-[11px] text-slate-600 leading-relaxed">
+                    ต้องการความรวดเร็ว? คลิกปุ่มด้านล่างเพื่อทำการ **สร้างสำเนากระดาษคำนวณต้นแบบ** ของ Google Sheets ที่มีชีตย่อยและหัวตารางครบถ้วนเรียบร้อยแล้วลงในบัญชี Google Drive ของท่านโดยตรง!
+                  </p>
+                </div>
+                <a
+                  href="https://docs.google.com/spreadsheets/d/1rwikG7oRMLroR7DC3IqpyJ5wRD3Lvo43A8mpL2jcx64/copy"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer shadow-sm text-center"
+                >
+                  <Database className="h-4 w-4" />
+                  กดเพื่อทำสำเนา Google Sheets ต้นแบบในคลิกเดียว (Make a Copy)
+                </a>
+              </div>
+
+              {/* Reset & Force Upload Buttons */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1.5">
+                {/* Reset button */}
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={handleResetDataClick}
+                    disabled={isResetting}
+                    className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 rounded-xl text-xs font-extrabold transition-all active:scale-95 cursor-pointer"
+                  >
+                    {isResetting ? (
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <HardDrive className="h-4 w-4" />
+                    )}
+                    🗑️ ล้างข้อมูลพัสดุและตัวอย่างในระบบ
+                  </button>
+                  <p className="text-[10px] text-slate-400 text-center leading-normal">
+                    ใช้ลบข้อมูลอุปกรณ์ทดลองทั้งหมดเพื่อเริ่มต้นบันทึกข้อมูลของสโตร์ท่านจริง (ข้อมูลจะว่างเปล่า)
+                  </p>
+                </div>
+
+                {/* Upload local state button */}
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={handleUploadLocalClick}
+                    disabled={isUploading || !webAppUrl.trim()}
+                    className={`w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-xs font-extrabold transition-all border ${
+                      webAppUrl.trim()
+                        ? "bg-indigo-50 hover:bg-indigo-100 border-indigo-200 text-indigo-700 cursor-pointer active:scale-95"
+                        : "bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed"
+                    }`}
+                  >
+                    {isUploading ? (
+                      <RefreshCw className="h-4 w-4 animate-spin text-indigo-600" />
+                    ) : (
+                      <Wifi className="h-4 w-4" />
+                    )}
+                    📤 ส่งข้อมูลพัสดุในเครื่องขึ้น Google Sheets
+                  </button>
+                  <p className="text-[10px] text-slate-400 text-center leading-normal">
+                    ส่งข้อมูลพัสดุที่ท่านบันทึกค้างอยู่ภายในเครื่องขึ้นสู่ Google Sheets ของท่านโดยตรง
+                  </p>
+                </div>
+              </div>
+
+              {resetSuccess && (
+                <div className="p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-bold text-center animate-fadeIn">
+                  ✨ ล้างข้อมูลพัสดุและรายการตัวอย่างออกจากเบราว์เซอร์เสร็จสิ้นแล้ว! คุณสามารถเริ่มป้อนข้อมูลใหม่ได้ทันที
+                </div>
+              )}
+
+              {uploadResult && (
+                <div className={`p-3.5 border rounded-xl text-xs font-bold text-center animate-fadeIn ${
+                  uploadResult.success 
+                    ? "bg-emerald-50 border-emerald-200 text-emerald-800" 
+                    : "bg-rose-50 border-rose-200 text-rose-800"
+                }`}>
+                  {uploadResult.success ? '✅ ' : '❌ '} {uploadResult.message}
+                </div>
               )}
             </div>
           </div>

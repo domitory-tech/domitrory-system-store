@@ -356,6 +356,45 @@ export default function App() {
     }
   };
 
+  // ล้างข้อมูลจำลองทั้งหมด
+  const handleResetLocalData = () => {
+    setProducts([]);
+    setTransactions([]);
+    localStorage.setItem('gas_store_products', JSON.stringify([]));
+    localStorage.setItem('gas_store_transactions', JSON.stringify([]));
+  };
+
+  // อัปโหลดข้อมูลจำลองในเครื่องขึ้นสู่ Google Sheets
+  const handleUploadLocalDataToGAS = async (): Promise<{ success: boolean; message: string }> => {
+    if (!isConfigured()) {
+      return { success: false, message: 'กรุณากรอกและบันทึก URL ของ Web App ก่อนทำการอัปโหลด' };
+    }
+    
+    let uploadedCount = 0;
+    try {
+      for (const prod of products) {
+        // อัปเดตพัสดุลงในชีตผ่าน editProduct หรือเพิ่มพัสดุใหม่เข้าไป
+        const result = await syncEditProduct(prod) as any;
+        if (result && result.success) {
+          uploadedCount++;
+        } else {
+          // หากแก้ไม่สำเร็จ อาจเพราะสินค้ายังไม่มีในชีต ให้พยายามส่ง processIntake เข้าไปเพื่อสร้างชีตใหม่
+          await syncIntake({
+            code: prod.code,
+            quantity: prod.quantity,
+            operator: currentUser?.fullName || 'System',
+            note: 'นำเข้าระบบตอนย้ายข้อมูล'
+          });
+          uploadedCount++;
+        }
+      }
+      await handleSyncFromGAS();
+      return { success: true, message: `อัปโหลดพัสดุขึ้น Google Sheets สำเร็จทั้งหมด ${uploadedCount} รายการ!` };
+    } catch (err: any) {
+      return { success: false, message: err.message || 'เกิดข้อผิดพลาดขณะส่งข้อมูลขึ้น Google Sheets' };
+    }
+  };
+
   if (!currentUser) {
     return <Login onLoginSuccess={handleLoginSuccess} users={users} />;
   }
@@ -596,7 +635,11 @@ export default function App() {
           )}
 
           {activeTab === 'developer' && currentUser.role === 'Admin' && (
-            <GasDeveloper onSync={() => handleSyncFromGAS(true)} />
+            <GasDeveloper 
+              onSync={() => handleSyncFromGAS(true)} 
+              onResetData={handleResetLocalData}
+              onUploadLocalData={handleUploadLocalDataToGAS}
+            />
           )}
         </div>
 
