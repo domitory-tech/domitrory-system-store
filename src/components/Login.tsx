@@ -120,9 +120,10 @@ export default function Login({ onLoginSuccess, users }: LoginProps) {
 
         {/* Footer Details */}
         <div id="login-footer" className="bg-slate-50 p-4 text-center border-t border-slate-100 text-[11px] text-slate-400">
-          จำลองฐานข้อมูลผ่าน Google Sheets & Drive API
+          เข้าใช้งานด้วยบัญชีจำลอง: admin (รหัส admin1234) หรือ staff (รหัส staff1234)
         </div>
       </div>
+
     </div>
   );
 }

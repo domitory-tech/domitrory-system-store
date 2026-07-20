@@ -211,7 +211,7 @@ export default function App() {
     { id: 'reports', label: 'รายงาน พิมพ์ (Export)', icon: FileText },
     ...(currentUser.role === 'Admin' ? [
       { id: 'users', label: 'จัดการข้อมูลผู้ใช้', icon: Users },
-      { id: 'developer', label: 'จัดเตรียมสคริปต์ (GAS)', icon: FileCode }
+      { id: 'developer', label: '🔋 ติดตั้งฐานข้อมูล (GAS)', icon: FileCode }
     ] : []),
   ];
 
@@ -336,6 +336,7 @@ export default function App() {
               transactions={transactions}
               onNavigateToTab={(tab) => setActiveTab(tab)}
               onSelectProductForIntake={handleSelectProductForIntake}
+              currentUser={currentUser}
             />
           )}
 
