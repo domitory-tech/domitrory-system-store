@@ -369,6 +369,10 @@ export default function App() {
     if (!isConfigured()) {
       return { success: false, message: 'กรุณากรอกและบันทึก URL ของ Web App ก่อนทำการอัปโหลด' };
     }
+
+    if (products.length === 0) {
+      return { success: false, message: 'ไม่มีข้อมูลพัสดุจำลองภายในเบราว์เซอร์ที่จะทำการอัปโหลด กรุณาตรวจสอบหรือเพิ่มพัสดุก่อนส่ง' };
+    }
     
     let uploadedCount = 0;
     try {
@@ -381,7 +385,12 @@ export default function App() {
           // หากแก้ไม่สำเร็จ อาจเพราะสินค้ายังไม่มีในชีต ให้พยายามส่ง processIntake เข้าไปเพื่อสร้างชีตใหม่
           await syncIntake({
             code: prod.code,
+            name: prod.name,
+            category: prod.category,
             quantity: prod.quantity,
+            minStock: prod.minStock,
+            unit: prod.unit,
+            imageUrl: prod.imageUrl || '',
             operator: currentUser?.fullName || 'System',
             note: 'นำเข้าระบบตอนย้ายข้อมูล'
           });
