@@ -16,7 +16,7 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ products, transactions, onNavigateToTab, onSelectProductForIntake, currentUser }: DashboardProps) {
-  const [showSetupBanner, setShowSetupBanner] = useState(true);
+  const [showSetupBanner, setShowSetupBanner] = useState(false);
   
   // คำนวณสถิติ
   const totalItems = products.length;

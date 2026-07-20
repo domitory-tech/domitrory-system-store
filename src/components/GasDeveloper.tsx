@@ -7,7 +7,11 @@ import React, { useState, useEffect } from 'react';
 import { FileCode, Copy, Check, BookOpen, AlertCircle, Sparkles, FileText, Database, ExternalLink, Wifi, WifiOff, RefreshCw, Server, HardDrive, CheckCircle2, Play, Settings } from 'lucide-react';
 import { CODE_GS, INDEX_HTML, JAVASCRIPT_HTML, SETUP_GUIDE } from '../data/gasCode';
 
-export default function GasDeveloper() {
+interface GasDeveloperProps {
+  onSync?: () => void;
+}
+
+export default function GasDeveloper({ onSync }: GasDeveloperProps) {
   const [activeSubTab, setActiveSubTab] = useState<'quick' | 'guide' | 'gs' | 'html' | 'js'>('quick');
   const [copied, setCopied] = useState(false);
   const [quickCopied, setQuickCopied] = useState(false);
@@ -30,6 +34,15 @@ export default function GasDeveloper() {
   const [diagnosticLogs, setDiagnosticLogs] = useState<string[]>([]);
   const [isTesting, setIsTesting] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  const getDriveFolderUrl = () => {
+    if (!driveFolderId) return '';
+    if (driveFolderId.trim().startsWith('http://') || driveFolderId.trim().startsWith('https://')) {
+      return driveFolderId.trim();
+    }
+    return `https://drive.google.com/drive/folders/${driveFolderId.trim()}`;
+  };
+  const driveFolderUrl = getDriveFolderUrl();
 
   const getCodeString = () => {
     switch (activeSubTab) {
@@ -74,6 +87,11 @@ export default function GasDeveloper() {
     // Add logs
     const now = new Date().toLocaleTimeString();
     setDiagnosticLogs(prev => [`[${now}] 💾 บันทึกการตั้งค่าการเชื่อมต่อสำเร็จแล้ว!`, ...prev]);
+
+    // Trigger sync to fetch immediate data from sheet if configured
+    if (webAppUrl.trim()) {
+      onSync?.();
+    }
   };
 
   // Run Connection Diagnostics
@@ -131,6 +149,9 @@ export default function GasDeveloper() {
         addLog(`📊 ยืนยันสิทธิ์: สามารถส่งพัสดุและบันทึกรายการลงตารางหลักได้`);
         setSheetStatus('connected');
         localStorage.setItem('gas_sheet_status', 'connected');
+        
+        // Trigger data sync
+        onSync?.();
       } catch (err: any) {
         if (err.name === 'AbortError') {
           addLog(`❌ ดำเนินการไม่สำเร็จ: เชื่อมต่อ API หมดเวลา (Timeout 6 วินาที)`);
@@ -140,6 +161,7 @@ export default function GasDeveloper() {
         }
         setSheetStatus('connected'); // Fallback to connected if they put something valid but hit CORS
         localStorage.setItem('gas_sheet_status', 'connected');
+        onSync?.();
       }
     } else {
       addLog('ℹ️ ไม่มีที่อยู่ Web App URL -> ตั้งค่าเป็นโหมดทำงานจำลองภายในเว็บเบราว์เซอร์');
@@ -419,6 +441,57 @@ export default function GasDeveloper() {
                   ))
                 )}
               </div>
+            </div>
+
+            {/* Live Cloud Storage Links & Sync Controls */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3.5 shadow-sm">
+              <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                <ExternalLink className="h-3.5 w-3.5 text-indigo-500 animate-pulse" />
+                3. ดึงข้อมูล & ลิงก์ตรงเปิดไฟล์ทรัพยากรบนคลาวด์
+              </span>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <a
+                  href={spreadsheetUrl.trim() || "#"}
+                  target={spreadsheetUrl.trim() ? "_blank" : undefined}
+                  rel="noopener noreferrer"
+                  className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold border transition-all ${
+                    spreadsheetUrl.trim()
+                      ? "bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100 cursor-pointer active:scale-95 shadow-sm"
+                      : "bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed"
+                  }`}
+                  title={spreadsheetUrl.trim() ? "เปิด Google Sheets ฐานข้อมูลของท่าน" : "ระบุลิงก์ก่อนเปิด"}
+                >
+                  <Database className="h-4 w-4 text-emerald-600" />
+                  เปิด Google Sheets ฐานข้อมูล
+                </a>
+                
+                <a
+                  href={driveFolderUrl || "#"}
+                  target={driveFolderUrl ? "_blank" : undefined}
+                  rel="noopener noreferrer"
+                  className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold border transition-all ${
+                    driveFolderUrl
+                      ? "bg-indigo-50 border-indigo-200 text-indigo-800 hover:bg-indigo-100 cursor-pointer active:scale-95 shadow-sm"
+                      : "bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed"
+                  }`}
+                  title={driveFolderUrl ? "เปิดโฟลเดอร์รูปภาพใน Google Drive" : "ระบุรหัสโฟลเดอร์รูปภาพก่อนเปิด"}
+                >
+                  <HardDrive className="h-4 w-4 text-indigo-600" />
+                  เปิดโฟลเดอร์รูปภาพใน Drive
+                </a>
+              </div>
+
+              {onSync && (
+                <button
+                  type="button"
+                  onClick={onSync}
+                  className="w-full flex items-center justify-center gap-1.5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer shadow"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  สั่งดึงข้อมูลล่าสุดจาก Google Sheets ทันที
+                </button>
+              )}
             </div>
           </div>
         </div>

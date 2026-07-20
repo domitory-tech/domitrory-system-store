@@ -128,7 +128,7 @@ export default function App() {
     if (isConfigured()) {
       try {
         await syncAddUser(newUser);
-        setTimeout(() => handleSyncFromGAS(), 1000);
+        await handleSyncFromGAS();
       } catch (err) {
         console.error(err);
       }
@@ -140,7 +140,7 @@ export default function App() {
     if (isConfigured()) {
       try {
         await syncDeleteUser(username);
-        setTimeout(() => handleSyncFromGAS(), 1000);
+        await handleSyncFromGAS();
       } catch (err) {
         console.error(err);
       }
@@ -157,7 +157,7 @@ export default function App() {
     if (isConfigured()) {
       try {
         await syncUpdateUser(oldUsername, updatedUser);
-        setTimeout(() => handleSyncFromGAS(), 1000);
+        await handleSyncFromGAS();
       } catch (err) {
         console.error(err);
       }
@@ -262,7 +262,7 @@ export default function App() {
           operator: currentUser?.fullName || 'ผู้ดูแลระบบทั่วไป',
           imageName: `img_${data.code}_${Date.now()}.png`
         });
-        setTimeout(() => handleSyncFromGAS(), 1200);
+        await handleSyncFromGAS();
       } catch (err) {
         console.error("GAS intake failed:", err);
       }
@@ -321,7 +321,7 @@ export default function App() {
           ...data,
           operator: data.operator || currentUser?.fullName || 'เจ้าหน้าที่พัสดุหอพัก'
         });
-        setTimeout(() => handleSyncFromGAS(), 1200);
+        await handleSyncFromGAS();
       } catch (err) {
         console.error("GAS withdraw failed:", err);
       }
@@ -336,7 +336,7 @@ export default function App() {
     if (isConfigured()) {
       try {
         await syncEditProduct(updatedProduct);
-        setTimeout(() => handleSyncFromGAS(), 1000);
+        await handleSyncFromGAS();
       } catch (err) {
         console.error("GAS edit failed:", err);
       }
@@ -349,7 +349,7 @@ export default function App() {
     if (isConfigured()) {
       try {
         await syncDeleteProduct(code);
-        setTimeout(() => handleSyncFromGAS(), 1000);
+        await handleSyncFromGAS();
       } catch (err) {
         console.error("GAS delete failed:", err);
       }
@@ -402,45 +402,6 @@ export default function App() {
               </span>
             </div>
           </div>
-        </div>
-
-        {/* Connection status card */}
-        <div className="mx-4 mt-3 mb-3 p-3 rounded-2xl border border-slate-200/60 bg-white/70 shadow-sm space-y-1.5 font-sans">
-          <div className="flex items-center justify-between">
-            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
-              แหล่งเก็บข้อมูล
-            </span>
-            {isConfigured() ? (
-              <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
-                <Cloud className="h-2.5 w-2.5 animate-pulse text-emerald-500" />
-                Google Sheets
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1 text-[9px] font-bold text-slate-500 bg-slate-50 px-2 py-0.5 rounded-full border border-slate-100">
-                <CloudOff className="h-2.5 w-2.5 text-slate-400" />
-                Local Mode
-              </span>
-            )}
-          </div>
-          
-          <div className="text-[10px] text-slate-500 leading-tight">
-            {isConfigured() ? (
-              <span>เชื่อมต่อฐานข้อมูลชีตเรียบร้อย</span>
-            ) : (
-              <span>กำลังจำลองฐานข้อมูลในเครื่อง</span>
-            )}
-          </div>
-
-          {isConfigured() && (
-            <button
-              onClick={() => handleSyncFromGAS(true)}
-              disabled={isSyncing}
-              className="w-full flex items-center justify-center gap-1.5 py-1.5 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-200 text-white disabled:text-slate-400 rounded-lg text-[10px] font-bold transition-all active:scale-95 cursor-pointer"
-            >
-              <RefreshCcw className={`h-3 w-3 ${isSyncing ? 'animate-spin' : ''}`} />
-              {isSyncing ? 'กำลังดึงข้อมูล...' : 'ดึงข้อมูลล่าสุด'}
-            </button>
-          )}
         </div>
 
         {/* Sidebar Menu Links */}
@@ -635,7 +596,7 @@ export default function App() {
           )}
 
           {activeTab === 'developer' && currentUser.role === 'Admin' && (
-            <GasDeveloper />
+            <GasDeveloper onSync={() => handleSyncFromGAS(true)} />
           )}
         </div>
 
