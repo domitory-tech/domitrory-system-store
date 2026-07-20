@@ -1,0 +1,8 @@
+{
+  "name": "ระบบจัดการสโตร์และคลังสินค้า",
+  "description": "ระบบจัดการเบิก-นำเข้า-จ่ายสินค้า และแจ้งเตือนสต็อกขั้นต่ำ เชื่อมต่อ Google Sheets และ Google Drive",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
