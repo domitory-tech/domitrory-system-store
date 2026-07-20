@@ -108,3 +108,8 @@ export async function syncDeleteUser(username: string) {
 export async function syncUpdateUser(oldUsername: string, user: User) {
   return apiRequest('updateUser', { oldUsername, user });
 }
+
+export async function syncSetupDatabase(): Promise<{ success: boolean; message: string } | null> {
+  return apiRequest<{ success: boolean; message: string }>('setup', {});
+}
+

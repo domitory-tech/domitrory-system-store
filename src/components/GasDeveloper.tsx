@@ -6,6 +6,8 @@
 import React, { useState, useEffect } from 'react';
 import { FileCode, Copy, Check, BookOpen, AlertCircle, Sparkles, FileText, Database, ExternalLink, Wifi, WifiOff, RefreshCw, Server, HardDrive, CheckCircle2, Play, Settings } from 'lucide-react';
 import { CODE_GS, INDEX_HTML, JAVASCRIPT_HTML, SETUP_GUIDE } from '../data/gasCode';
+import { syncSetupDatabase, isConfigured } from '../utils/gasApi';
+
 
 interface GasDeveloperProps {
   onSync?: () => void;
@@ -18,7 +20,7 @@ export default function GasDeveloper({ onSync }: GasDeveloperProps) {
 
   // Connection settings states loaded from localStorage
   const [webAppUrl, setWebAppUrl] = useState(() => localStorage.getItem('gas_web_app_url') || '');
-  const [spreadsheetUrl, setSpreadsheetUrl] = useState(() => localStorage.getItem('gas_spreadsheet_url') || '');
+  const [spreadsheetUrl, setSpreadsheetUrl] = useState(() => localStorage.getItem('gas_spreadsheet_url') || 'https://docs.google.com/spreadsheets/d/1rwikG7oRMLroR7DC3IqpyJ5wRD3Lvo43A8mpL2jcx64/edit?gid=0#gid=0');
   const [driveFolderId, setDriveFolderId] = useState(() => localStorage.getItem('gas_drive_folder_id') || '');
   
   // Status states
@@ -34,6 +36,58 @@ export default function GasDeveloper({ onSync }: GasDeveloperProps) {
   const [diagnosticLogs, setDiagnosticLogs] = useState<string[]>([]);
   const [isTesting, setIsTesting] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Database setup states
+  const [isSettingUpDb, setIsSettingUpDb] = useState(false);
+  const [setupError, setSetupError] = useState<string | null>(null);
+  const [setupSuccess, setSetupSuccess] = useState<string | null>(null);
+
+  const handleSetupDatabase = async () => {
+    const appUrl = localStorage.getItem('gas_web_app_url') || webAppUrl;
+    if (!appUrl.trim()) {
+      setSetupError('⚠️ กรุณากรอก URL ของ Google Apps Script Web App และบันทึกข้อมูลก่อนสั่งติดตั้งฐานข้อมูล');
+      setTimeout(() => setSetupError(null), 6000);
+      return;
+    }
+    
+    setIsSettingUpDb(true);
+    setSetupError(null);
+    setSetupSuccess(null);
+    
+    const now = new Date().toLocaleTimeString();
+    setDiagnosticLogs(prev => [`[${now}] ⚙️ กำลังเชื่อมต่อไปยังสคริปต์เพื่อสร้างโครงสร้างตารางข้อมูลบนชีตออนไลน์...`, ...prev]);
+    
+    try {
+      const res = await syncSetupDatabase();
+      if (res && res.success) {
+        setSetupSuccess(res.message || 'ติดตั้งชีตและเตรียมฐานข้อมูลเรียบร้อยแล้ว!');
+        setDiagnosticLogs(prev => [
+          `[${new Date().toLocaleTimeString()}] ✅ สำเร็จ: ${res.message || 'ติดตั้งตารางในชีตเรียบร้อย'}`,
+          ...prev
+        ]);
+        // Trigger a fresh sync
+        onSync?.();
+      } else {
+        const errorMsg = res && !res.success ? res.message : 'ไม่ได้รับการตอบกลับจาก Web App หรือยังไม่ได้ทำการ Deployment แนะนำให้เช็คสิทธิ์การเข้าถึง Web App (ตั้งค่าเป็น Anyone)';
+        setSetupError(errorMsg);
+        setDiagnosticLogs(prev => [
+          `[${new Date().toLocaleTimeString()}] ❌ ติดตั้งล้มเหลว: ${errorMsg}`,
+          ...prev
+        ]);
+      }
+    } catch (err: any) {
+      console.error(err);
+      const errMsg = err.message || 'กรุณาตรวจสอบว่าคุณได้เซ็ตอัป Apps Script สำเร็จและเลือก Deploy สิทธิ์เข้าถึงเป็น Anyone แล้ว';
+      setSetupError(errMsg);
+      setDiagnosticLogs(prev => [
+        `[${new Date().toLocaleTimeString()}] ❌ ล้มเหลว: ${errMsg}`,
+        ...prev
+      ]);
+    } finally {
+      setIsSettingUpDb(false);
+    }
+  };
+
 
   const getDriveFolderUrl = () => {
     if (!driveFolderId) return '';
@@ -255,6 +309,78 @@ export default function GasDeveloper({ onSync }: GasDeveloperProps) {
             )}
           </button>
         </div>
+
+        {/* SETUP SHEETS DATABASE AUTO-BUILDER BANNER */}
+        <div id="setup-sheets-builder-card" className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-4 md:p-5 space-y-4 shadow-sm font-sans">
+          <div className="flex flex-col lg:flex-row justify-between lg:items-center gap-4">
+            <div className="space-y-1">
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-100 text-amber-800 text-[9px] font-bold rounded-full uppercase tracking-wider">
+                ⚡ ติดตั้งง่ายคลิกเดียว (Easy 1-Click Setup)
+              </span>
+              <h4 className="font-black text-slate-900 text-sm md:text-base flex items-center gap-1.5">
+                <Database className="h-4.5 w-4.5 text-amber-600 animate-pulse" />
+                ติดตั้งตารางฐานข้อมูลอัตโนมัติ (Setup Sheets)
+              </h4>
+              <p className="text-xs text-slate-600 leading-relaxed max-w-2xl">
+                หากในลิงก์ Google Sheets ของท่านเป็นไฟล์ว่างเปล่าและไม่มีคอลัมน์ใดๆ เลย ปุ่มติดตั้งนี้จะส่งคำขอคำสั่งไปสร้างแผ่นชีตย่อยและหัวข้อคอลัมน์ (Headers) ให้ทั้งหมดโดยอัตโนมัติ ได้แก่:
+              </p>
+            </div>
+            
+            <button
+              type="button"
+              onClick={handleSetupDatabase}
+              disabled={isSettingUpDb}
+              className={`flex items-center justify-center gap-2 px-5 py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 disabled:from-slate-300 disabled:to-slate-400 text-white font-bold rounded-xl text-xs transition-all active:scale-95 cursor-pointer shadow-sm shrink-0`}
+            >
+              {isSettingUpDb ? (
+                <>
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  กำลังดำเนินการตั้งค่า...
+                </>
+              ) : (
+                <>
+                  <Database className="h-4 w-4" />
+                  กดติดตั้งตารางฐานข้อมูลอัตโนมัติ
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Table schemas checklist */}
+          <div className="pt-3 border-t border-amber-200/50 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-[10px] text-slate-600 leading-normal">
+            <div className="p-2.5 bg-white/70 rounded-xl border border-amber-200/20 shadow-sm">
+              <span className="font-extrabold text-slate-800 block mb-0.5">👤 1. Users (สิทธิ์ผู้ใช้งาน)</span>
+              <p className="text-slate-500">Username, Password, FullName, Role</p>
+            </div>
+            <div className="p-2.5 bg-white/70 rounded-xl border border-amber-200/20 shadow-sm">
+              <span className="font-extrabold text-slate-800 block mb-0.5">📁 2. Categories (หมวดหมู่สินค้า)</span>
+              <p className="text-slate-500">CategoryName, DriveFolderId</p>
+            </div>
+            <div className="p-2.5 bg-white/70 rounded-xl border border-amber-200/20 shadow-sm">
+              <span className="font-extrabold text-slate-800 block mb-0.5">📦 3. Products (ทะเบียนพัสดุ)</span>
+              <p className="text-slate-500 text-ellipsis overflow-hidden">ProductCode, ProductName, Category, Quantity, MinStock, ImageUrl, Unit, UpdatedAt</p>
+            </div>
+            <div className="p-2.5 bg-white/70 rounded-xl border border-amber-200/20 shadow-sm">
+              <span className="font-extrabold text-slate-800 block mb-0.5">📝 4. Transactions (บันทึกเคลื่อนไหว)</span>
+              <p className="text-slate-500">TransactionID, ProductCode, ProductName, Category, Type, Quantity, PrevQuantity, NewQuantity, Operator, Recipient, Note, Timestamp</p>
+            </div>
+          </div>
+
+          {/* Setup Alerts */}
+          {setupSuccess && (
+            <div className="p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-semibold flex items-center gap-2 animate-fadeIn">
+              <span className="p-1 bg-emerald-500 rounded text-white text-[9px] font-bold">✓</span>
+              <span>{setupSuccess} (สแกนและดึงข้อมูลอัปเดตเข้าหน้าเว็บเรียบร้อย)</span>
+            </div>
+          )}
+          {setupError && (
+            <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-semibold flex items-center gap-2 animate-fadeIn">
+              <AlertCircle className="h-4.5 w-4.5 text-rose-500 shrink-0" />
+              <span>{setupError}</span>
+            </div>
+          )}
+        </div>
+
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 font-sans">
           {/* Configuration Form */}
