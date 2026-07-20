@@ -81,7 +81,7 @@ export default function App() {
     setSyncError(null);
     try {
       const liveProducts = await fetchLiveProducts();
-      if (liveProducts && liveProducts.length > 0) {
+      if (liveProducts) {
         setProducts(liveProducts);
       }
 
