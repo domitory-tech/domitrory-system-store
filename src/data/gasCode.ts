@@ -10,8 +10,48 @@ export const CODE_GS = `// ==========================================
 
 const SPREADSHEET_ID = ""; // ใส่ ID ของ Google Sheets ของคุณที่นี่ (หากปล่อยว่างไว้ระบบจะใช้ Active Spreadsheet ที่ผูกกับ Script นี้)
 
-// ฟังก์ชันหลักในการเปิดใช้งานเว็บบอร์ด / เว็บแอป
+// ฟังก์ชันหลักในการเปิดใช้งานเว็บบอร์ด / เว็บแอป และระบบรับส่งข้อมูล (REST API)
 function doGet(e) {
+  // รองรับการรับดึงข้อมูลจาก React Client ภายนอก (API GET)
+  if (e.parameter && e.parameter.action) {
+    var action = e.parameter.action;
+    var result = { success: false, data: null };
+    try {
+      if (action === "getProducts") {
+        result = { success: true, data: getInventoryList() };
+      } else if (action === "getCategories") {
+        result = { success: true, data: getCategories() };
+      } else if (action === "getTransactions") {
+        result = { success: true, data: getTransactionLogs() };
+      } else if (action === "getUsers") {
+        var ss = getSpreadsheet();
+        var sheet = ss.getSheetByName('Users');
+        var list = [];
+        if (sheet) {
+          var data = sheet.getDataRange().getValues();
+          for (var i = 1; i < data.length; i++) {
+            list.push({
+              username: data[i][0].toString(),
+              fullName: data[i][2].toString(),
+              role: data[i][3].toString()
+            });
+          }
+        }
+        result = { success: true, data: list };
+      } else if (action === "setup") {
+        result = setupDatabase();
+      } else {
+        result = { success: false, message: "ไม่พบ Action ที่ระบุ: " + action };
+      }
+    } catch (err) {
+      result = { success: false, message: "เกิดข้อผิดพลาดในการดึงข้อมูล: " + err.toString() };
+    }
+    
+    // ตั้งค่า CORS เพื่อความปลอดภัย
+    return ContentService.createTextOutput(JSON.stringify(result))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
   var template = HtmlService.createTemplateFromFile('Index');
   return template.evaluate()
       .setTitle('ระบบจัดการสโตร์และคลังสินค้า (Store & Inventory)')
@@ -521,6 +561,155 @@ function getDashboardStats() {
       items: [],
       recentLogs: []
     };
+  }
+}
+
+// 11. ระบบบันทึกข้อมูลและรับคำขอผ่าน POST (REST API POST)
+function doPost(e) {
+  var result = { success: false, message: "" };
+  try {
+    var postData = JSON.parse(e.postData.contents);
+    var action = postData.action;
+    var data = postData.data;
+    
+    if (action === "processIntake") {
+      result = processIntake(data);
+    } else if (action === "processWithdraw") {
+      result = processWithdraw(data);
+    } else if (action === "editProduct") {
+      result = editProductInSheet(data);
+    } else if (action === "deleteProduct") {
+      result = deleteProductInSheet(data);
+    } else if (action === "addUser") {
+      result = addUserInSheet(data);
+    } else if (action === "deleteUser") {
+      result = deleteUserInSheet(data);
+    } else if (action === "updateUser") {
+      result = updateUserInSheet(data);
+    } else if (action === "setup") {
+      result = setupDatabase();
+    } else {
+      result = { success: false, message: "ไม่พบ Action: " + action };
+    }
+  } catch (err) {
+    result = { success: false, message: "ข้อผิดพลาดระบบ Apps Script: " + err.toString() };
+  }
+  
+  return ContentService.createTextOutput(JSON.stringify(result))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// บันทึกแก้ไขสินค้าลงแผ่นชีต
+function editProductInSheet(prod) {
+  try {
+    var ss = getSpreadsheet();
+    var sheet = ss.getSheetByName('Products');
+    if (!sheet) return { success: false, message: "ไม่พบตารางสินค้า Products" };
+    
+    var data = sheet.getDataRange().getValues();
+    var foundIndex = -1;
+    for (var i = 1; i < data.length; i++) {
+      if (data[i][0].toString().trim() === prod.code.trim()) {
+        foundIndex = i + 1;
+        break;
+      }
+    }
+    
+    if (foundIndex === -1) {
+      return { success: false, message: "ไม่พบสินค้ารหัส: " + prod.code };
+    }
+    
+    sheet.getRange(foundIndex, 2).setValue(prod.name);
+    sheet.getRange(foundIndex, 3).setValue(prod.category);
+    sheet.getRange(foundIndex, 4).setValue(Number(prod.quantity));
+    sheet.getRange(foundIndex, 5).setValue(Number(prod.minStock));
+    if (prod.imageUrl !== undefined) {
+      sheet.getRange(foundIndex, 6).setValue(prod.imageUrl);
+    }
+    sheet.getRange(foundIndex, 7).setValue(prod.unit);
+    sheet.getRange(foundIndex, 8).setValue(new Date());
+    
+    return { success: true, message: "แก้ไขข้อมูลสินค้าสำเร็จ!" };
+  } catch (err) {
+    return { success: false, message: err.toString() };
+  }
+}
+
+// ลบสินค้าออกจากชีต
+function deleteProductInSheet(payload) {
+  try {
+    var ss = getSpreadsheet();
+    var sheet = ss.getSheetByName('Products');
+    if (!sheet) return { success: false, message: "ไม่พบตารางสินค้า" };
+    
+    var data = sheet.getDataRange().getValues();
+    for (var i = 1; i < data.length; i++) {
+      if (data[i][0].toString().trim() === payload.code.trim()) {
+        sheet.deleteRow(i + 1);
+        return { success: true, message: "ลบสินค้าเรียบร้อยแล้ว!" };
+      }
+    }
+    return { success: false, message: "ไม่พบสินค้ารหัสที่ระบุ" };
+  } catch (err) {
+    return { success: false, message: err.toString() };
+  }
+}
+
+// เพิ่มผู้ใช้งานลงชีต
+function addUserInSheet(user) {
+  try {
+    var ss = getSpreadsheet();
+    var sheet = ss.getSheetByName('Users');
+    if (!sheet) return { success: false, message: "ไม่พบตารางผู้ใช้" };
+    
+    sheet.appendRow([user.username, user.password || "123456", user.fullName, user.role]);
+    return { success: true, message: "เพิ่มผู้ใช้สำเร็จ!" };
+  } catch (err) {
+    return { success: false, message: err.toString() };
+  }
+}
+
+// ลบผู้ใช้ในชีต
+function deleteUserInSheet(payload) {
+  try {
+    var ss = getSpreadsheet();
+    var sheet = ss.getSheetByName('Users');
+    if (!sheet) return { success: false, message: "ไม่พบตารางผู้ใช้" };
+    
+    var data = sheet.getDataRange().getValues();
+    for (var i = 1; i < data.length; i++) {
+      if (data[i][0].toString().trim() === payload.username.trim()) {
+        sheet.deleteRow(i + 1);
+        return { success: true, message: "ลบผู้ใช้ออกจากระบบสำเร็จ!" };
+      }
+    }
+    return { success: false, message: "ไม่พบชื่อผู้ใช้งานนี้" };
+  } catch (err) {
+    return { success: false, message: err.toString() };
+  }
+}
+
+// อัปเดตข้อมูลผู้ใช้ในชีต
+function updateUserInSheet(payload) {
+  try {
+    var ss = getSpreadsheet();
+    var sheet = ss.getSheetByName('Users');
+    if (!sheet) return { success: false, message: "ไม่พบตารางผู้ใช้" };
+    
+    var data = sheet.getDataRange().getValues();
+    for (var i = 1; i < data.length; i++) {
+      if (data[i][0].toString().trim() === payload.oldUsername.trim()) {
+        var row = i + 1;
+        sheet.getRange(row, 1).setValue(payload.user.username);
+        sheet.getRange(row, 2).setValue(payload.user.password || data[i][1]);
+        sheet.getRange(row, 3).setValue(payload.user.fullName);
+        sheet.getRange(row, 4).setValue(payload.user.role);
+        return { success: true, message: "อัปเดตผู้ใช้งานเรียบร้อย!" };
+      }
+    }
+    return { success: false, message: "ไม่พบผู้ใช้ที่ระบุ" };
+  } catch (err) {
+    return { success: false, message: err.toString() };
   }
 }
 `;

@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
-import { LayoutDashboard, Package, ArrowUpRight, ArrowDownRight, RefreshCcw, FileCode, LogOut, Menu, X, Warehouse, FileText } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { LayoutDashboard, Package, ArrowUpRight, ArrowDownRight, RefreshCcw, FileCode, LogOut, Menu, X, Warehouse, FileText, Cloud, CloudOff, AlertCircle } from 'lucide-react';
 import { User, Product, Transaction } from './types';
 import { INITIAL_PRODUCTS, INITIAL_TRANSACTIONS, INITIAL_CATEGORIES } from './data/mockData';
 import Login from './components/Login';
@@ -17,35 +17,150 @@ import GasDeveloper from './components/GasDeveloper';
 import UsersManagement from './components/UsersManagement';
 import Reports from './components/Reports';
 import { Users } from 'lucide-react';
+import {
+  isConfigured,
+  fetchLiveProducts,
+  fetchLiveTransactions,
+  fetchLiveUsers,
+  syncIntake,
+  syncWithdraw,
+  syncEditProduct,
+  syncDeleteProduct,
+  syncAddUser,
+  syncDeleteUser,
+  syncUpdateUser
+} from './utils/gasApi';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [activeTab, setActiveTab] = useState<string>('dashboard');
-  const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
-  const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
+  
+  // Local persistence fallback
+  const [products, setProducts] = useState<Product[]>(() => {
+    const saved = localStorage.getItem('gas_store_products');
+    return saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
+  });
+  const [transactions, setTransactions] = useState<Transaction[]>(() => {
+    const saved = localStorage.getItem('gas_store_transactions');
+    return saved ? JSON.parse(saved) : INITIAL_TRANSACTIONS;
+  });
   const [selectedProductCode, setSelectedProductCode] = useState<string>('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // ข้อมูลผู้ใช้งานระบบสโตร์
-  const [users, setUsers] = useState<User[]>([
-    { username: 'admin', fullName: 'ผู้ดูแลระบบทั่วไป', role: 'Admin', password: 'admin1234' },
-    { username: 'staff', fullName: 'เจ้าหน้าที่พัสดุหอพัก', role: 'Staff', password: 'staff1234' }
-  ]);
+  const [users, setUsers] = useState<User[]>(() => {
+    const saved = localStorage.getItem('gas_store_users');
+    return saved ? JSON.parse(saved) : [
+      { username: 'admin', fullName: 'ผู้ดูแลระบบทั่วไป', role: 'Admin', password: 'admin1234' },
+      { username: 'staff', fullName: 'เจ้าหน้าที่พัสดุหอพัก', role: 'Staff', password: 'staff1234' }
+    ];
+  });
 
-  const handleAddUser = (newUser: User) => {
+  // Sync state
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [syncSuccessMessage, setSyncSuccessMessage] = useState<string | null>(null);
+
+  // Automatically persist locally
+  useEffect(() => {
+    localStorage.setItem('gas_store_products', JSON.stringify(products));
+  }, [products]);
+
+  useEffect(() => {
+    localStorage.setItem('gas_store_transactions', JSON.stringify(transactions));
+  }, [transactions]);
+
+  useEffect(() => {
+    localStorage.setItem('gas_store_users', JSON.stringify(users));
+  }, [users]);
+
+  // Sync pull function
+  const handleSyncFromGAS = async (showSuccessToast = false) => {
+    if (!isConfigured()) return;
+    setIsSyncing(true);
+    setSyncError(null);
+    try {
+      const liveProducts = await fetchLiveProducts();
+      if (liveProducts && liveProducts.length > 0) {
+        setProducts(liveProducts);
+      }
+
+      const liveTxs = await fetchLiveTransactions();
+      if (liveTxs) {
+        setTransactions(liveTxs);
+      }
+
+      const liveUsers = await fetchLiveUsers();
+      if (liveUsers && liveUsers.length > 0) {
+        // preserve password fields if missing from api
+        setUsers(prev => {
+          return liveUsers.map(lu => {
+            const match = prev.find(p => p.username === lu.username);
+            return {
+              ...lu,
+              password: lu.password || (match ? match.password : '1234')
+            };
+          });
+        });
+      }
+
+      if (showSuccessToast) {
+        setSyncSuccessMessage('🔄 ดึงข้อมูลล่าสุดจาก Google Sheets สำเร็จ!');
+        setTimeout(() => setSyncSuccessMessage(null), 3000);
+      }
+    } catch (err: any) {
+      console.error("Sync error:", err);
+      setSyncError('ไม่สามารถเชื่อมต่อ Google Sheets ได้ กรุณาเช็ค Apps Script URL');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Initial pull on mount
+  useEffect(() => {
+    if (isConfigured()) {
+      handleSyncFromGAS();
+    }
+  }, []);
+
+  const handleAddUser = async (newUser: User) => {
     setUsers((prev) => [...prev, newUser]);
+    if (isConfigured()) {
+      try {
+        await syncAddUser(newUser);
+        setTimeout(() => handleSyncFromGAS(), 1000);
+      } catch (err) {
+        console.error(err);
+      }
+    }
   };
 
-  const handleDeleteUser = (username: string) => {
+  const handleDeleteUser = async (username: string) => {
     setUsers((prev) => prev.filter((u) => u.username !== username));
+    if (isConfigured()) {
+      try {
+        await syncDeleteUser(username);
+        setTimeout(() => handleSyncFromGAS(), 1000);
+      } catch (err) {
+        console.error(err);
+      }
+    }
   };
 
-  const handleUpdateUser = (oldUsername: string, updatedUser: User) => {
+  const handleUpdateUser = async (oldUsername: string, updatedUser: User) => {
     setUsers((prev) =>
       prev.map((u) => (u.username === oldUsername ? updatedUser : u))
     );
     if (currentUser && currentUser.username === oldUsername) {
       setCurrentUser(updatedUser);
+    }
+    if (isConfigured()) {
+      try {
+        await syncUpdateUser(oldUsername, updatedUser);
+        setTimeout(() => handleSyncFromGAS(), 1000);
+      } catch (err) {
+        console.error(err);
+      }
     }
   };
 
@@ -75,7 +190,7 @@ export default function App() {
   };
 
   // ประมวลผลนำเข้าพัสดุ
-  const handleProcessIntake = (data: {
+  const handleProcessIntake = async (data: {
     code: string;
     name: string;
     category: string;
@@ -138,10 +253,24 @@ export default function App() {
     };
 
     setTransactions((prevTxs) => [newTx, ...prevTxs]);
+
+    // ส่งเข้า Google Sheets
+    if (isConfigured()) {
+      try {
+        await syncIntake({
+          ...data,
+          operator: currentUser?.fullName || 'ผู้ดูแลระบบทั่วไป',
+          imageName: `img_${data.code}_${Date.now()}.png`
+        });
+        setTimeout(() => handleSyncFromGAS(), 1200);
+      } catch (err) {
+        console.error("GAS intake failed:", err);
+      }
+    }
   };
 
   // ประมวลผลเบิกจ่ายพัสดุ
-  const handleProcessWithdraw = (data: {
+  const handleProcessWithdraw = async (data: {
     code: string;
     quantity: number;
     recipient: string;
@@ -184,18 +313,47 @@ export default function App() {
     };
 
     setTransactions((prevTxs) => [newTx, ...prevTxs]);
+
+    // ส่งเข้า Google Sheets
+    if (isConfigured()) {
+      try {
+        await syncWithdraw({
+          ...data,
+          operator: data.operator || currentUser?.fullName || 'เจ้าหน้าที่พัสดุหอพัก'
+        });
+        setTimeout(() => handleSyncFromGAS(), 1200);
+      } catch (err) {
+        console.error("GAS withdraw failed:", err);
+      }
+    }
   };
 
   // แก้ไขรายละเอียดพัสดุ
-  const handleEditProduct = (updatedProduct: Product) => {
+  const handleEditProduct = async (updatedProduct: Product) => {
     setProducts((prev) =>
       prev.map((p) => (p.code === updatedProduct.code ? updatedProduct : p))
     );
+    if (isConfigured()) {
+      try {
+        await syncEditProduct(updatedProduct);
+        setTimeout(() => handleSyncFromGAS(), 1000);
+      } catch (err) {
+        console.error("GAS edit failed:", err);
+      }
+    }
   };
 
   // ลบพัสดุออกจากระบบ
-  const handleDeleteProduct = (code: string) => {
+  const handleDeleteProduct = async (code: string) => {
     setProducts((prev) => prev.filter((p) => p.code !== code));
+    if (isConfigured()) {
+      try {
+        await syncDeleteProduct(code);
+        setTimeout(() => handleSyncFromGAS(), 1000);
+      } catch (err) {
+        console.error("GAS delete failed:", err);
+      }
+    }
   };
 
   if (!currentUser) {
@@ -232,7 +390,7 @@ export default function App() {
         </div>
 
         {/* User Information Profile */}
-        <div className="p-4 mx-4 my-5 bg-slate-200/55 rounded-2xl border border-slate-200/80">
+        <div className="p-4 mx-4 mt-4 bg-slate-200/55 rounded-2xl border border-slate-200/80">
           <div className="flex items-center gap-3">
             <div className="h-9 w-9 bg-indigo-600 text-white font-bold rounded-lg flex items-center justify-center text-xs">
               {currentUser.fullName.charAt(0)}
@@ -246,8 +404,47 @@ export default function App() {
           </div>
         </div>
 
+        {/* Connection status card */}
+        <div className="mx-4 mt-3 mb-3 p-3 rounded-2xl border border-slate-200/60 bg-white/70 shadow-sm space-y-1.5 font-sans">
+          <div className="flex items-center justify-between">
+            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+              แหล่งเก็บข้อมูล
+            </span>
+            {isConfigured() ? (
+              <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
+                <Cloud className="h-2.5 w-2.5 animate-pulse text-emerald-500" />
+                Google Sheets
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-[9px] font-bold text-slate-500 bg-slate-50 px-2 py-0.5 rounded-full border border-slate-100">
+                <CloudOff className="h-2.5 w-2.5 text-slate-400" />
+                Local Mode
+              </span>
+            )}
+          </div>
+          
+          <div className="text-[10px] text-slate-500 leading-tight">
+            {isConfigured() ? (
+              <span>เชื่อมต่อฐานข้อมูลชีตเรียบร้อย</span>
+            ) : (
+              <span>กำลังจำลองฐานข้อมูลในเครื่อง</span>
+            )}
+          </div>
+
+          {isConfigured() && (
+            <button
+              onClick={() => handleSyncFromGAS(true)}
+              disabled={isSyncing}
+              className="w-full flex items-center justify-center gap-1.5 py-1.5 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-200 text-white disabled:text-slate-400 rounded-lg text-[10px] font-bold transition-all active:scale-95 cursor-pointer"
+            >
+              <RefreshCcw className={`h-3 w-3 ${isSyncing ? 'animate-spin' : ''}`} />
+              {isSyncing ? 'กำลังดึงข้อมูล...' : 'ดึงข้อมูลล่าสุด'}
+            </button>
+          )}
+        </div>
+
         {/* Sidebar Menu Links */}
-        <nav className="flex-1 px-4 space-y-1.5">
+        <nav className="flex-1 px-4 space-y-1">
           {navItems.map((item) => {
             const Icon = item.icon;
             const active = activeTab === item.id;
@@ -255,7 +452,7 @@ export default function App() {
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-semibold cursor-pointer transition-all ${active ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'}`}
+                className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-semibold cursor-pointer transition-all ${active ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'}`}
               >
                 <Icon className="h-4 w-4" />
                 {item.label}
@@ -269,7 +466,7 @@ export default function App() {
           <button
             id="btn-logout-sidebar"
             onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-4 py-3 text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-xl text-xs font-semibold cursor-pointer transition-colors"
+            className="w-full flex items-center gap-3 px-4 py-2.5 text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-xl text-xs font-semibold cursor-pointer transition-colors"
           >
             <LogOut className="h-4 w-4" />
             ออกจากระบบคลัง
@@ -281,15 +478,32 @@ export default function App() {
       <header id="mobile-header" className="md:hidden bg-slate-100 text-slate-800 p-4 border-b border-slate-200 flex items-center justify-between shrink-0 select-none">
         <div className="flex items-center gap-2.5">
           <Warehouse className="h-5 w-5 text-indigo-600" />
-          <span className="font-bold text-slate-900 text-sm">คลังสโตร์หอพัก</span>
+          <div className="flex flex-col">
+            <span className="font-bold text-slate-900 text-sm leading-none">คลังสโตร์หอพัก</span>
+            <span className="text-[8px] text-slate-500 mt-0.5">
+              {isConfigured() ? '🟢 Google Sheets API' : '⚪ Local Simulation Mode'}
+            </span>
+          </div>
         </div>
-        <button
-          id="btn-toggle-mobile-menu"
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="p-1.5 hover:bg-slate-200 rounded-lg text-slate-700 cursor-pointer"
-        >
-          {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-        </button>
+        <div className="flex items-center gap-2">
+          {isConfigured() && (
+            <button
+              onClick={() => handleSyncFromGAS(true)}
+              disabled={isSyncing}
+              className="p-1.5 bg-white border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-50 cursor-pointer text-xs"
+              title="ดึงข้อมูลล่าสุด"
+            >
+              <RefreshCcw className={`h-3.5 w-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+            </button>
+          )}
+          <button
+            id="btn-toggle-mobile-menu"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="p-1.5 hover:bg-slate-200 rounded-lg text-slate-700 cursor-pointer"
+          >
+            {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
+        </div>
       </header>
 
       {/* MOBILE DROPDOWN NAVIGATION MENU */}
@@ -305,7 +519,7 @@ export default function App() {
                   setActiveTab(item.id);
                   setMobileMenuOpen(false);
                 }}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-xs font-semibold cursor-pointer transition-colors ${active ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'}`}
+                className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors ${active ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'}`}
               >
                 <Icon className="h-4 w-4" />
                 {item.label}
@@ -318,7 +532,7 @@ export default function App() {
               handleLogout();
               setMobileMenuOpen(false);
             }}
-            className="w-full flex items-center gap-3 px-4 py-3 text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg text-xs font-semibold cursor-pointer"
+            className="w-full flex items-center gap-3 px-4 py-2.5 text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg text-xs font-semibold cursor-pointer"
           >
             <LogOut className="h-4 w-4" />
             ออกจากระบบ
@@ -328,6 +542,26 @@ export default function App() {
 
       {/* CORE CONTENT PANEL */}
       <main id="main-content-panel" className="flex-1 overflow-y-auto p-4 md:p-8 flex flex-col">
+        {/* Dynamic Sync Notification Toast */}
+        {syncSuccessMessage && (
+          <div className="mb-4 p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center gap-3 text-xs text-emerald-800 font-medium shadow-sm">
+            <span className="p-1 bg-emerald-500 rounded-lg text-white text-[10px] font-bold">✓</span>
+            <div>{syncSuccessMessage}</div>
+          </div>
+        )}
+        {syncError && (
+          <div className="mb-4 p-3.5 bg-rose-50 border border-rose-200 rounded-2xl flex items-center gap-3 text-xs text-rose-800 font-medium shadow-sm">
+            <AlertCircle className="h-4 w-4 text-rose-500 shrink-0" />
+            <div>{syncError}</div>
+          </div>
+        )}
+        {isSyncing && !syncSuccessMessage && (
+          <div className="mb-4 p-3.5 bg-indigo-50/50 border border-indigo-100 rounded-2xl flex items-center gap-3 text-xs text-indigo-700 font-medium shadow-sm">
+            <RefreshCcw className="h-4 w-4 text-indigo-500 animate-spin shrink-0" />
+            <div>กำลังอัปเดตและประสานข้อมูลกับ Google Sheets...</div>
+          </div>
+        )}
+
         <div className="space-y-6 flex-grow pb-8">
           {/* Render Active View Tab */}
           {activeTab === 'dashboard' && (
