@@ -111,6 +111,7 @@ export const saveProduct = async (product: Product): Promise<void> => {
   const colPath = 'products';
   try {
     await setDoc(doc(db, colPath, product.code), product);
+    logDatabaseAction(`บันทึก/อัปเดตข้อมูลพัสดุสำเร็จ: ${product.code} - ${product.name} (คงเหลือ: ${product.quantity} ${product.unit})`, 'success');
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, `${colPath}/${product.code}`);
   }
@@ -121,6 +122,7 @@ export const deleteProductFromDb = async (code: string): Promise<void> => {
   const colPath = 'products';
   try {
     await deleteDoc(doc(db, colPath, code));
+    logDatabaseAction(`ลบข้อมูลพัสดุรหัส ${code} ออกจากคลังเรียบร้อย`, 'warn');
   } catch (err) {
     handleFirestoreError(err, OperationType.DELETE, `${colPath}/${code}`);
   }
@@ -148,6 +150,7 @@ export const saveTransaction = async (tx: Transaction): Promise<void> => {
   const colPath = 'transactions';
   try {
     await setDoc(doc(db, colPath, tx.id), tx);
+    logDatabaseAction(`บันทึกรายการเคลื่อนไหวสำเร็จ: ${tx.id} | ${tx.type === 'INTAKE' ? 'นำเข้า (+)' : 'เบิกจ่าย (-)'} พัสดุ ${tx.code} จำนวน ${tx.quantity} (${tx.operator})`, 'success');
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, `${colPath}/${tx.id}`);
   }
@@ -174,6 +177,7 @@ export const saveUser = async (user: User): Promise<void> => {
   const colPath = 'users';
   try {
     await setDoc(doc(db, colPath, user.username), user);
+    logDatabaseAction(`บันทึกข้อมูลบัญชีผู้ใช้งานสำเร็จ: ${user.username} (${user.fullName} | สิทธิ์: ${user.role})`, 'success');
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, `${colPath}/${user.username}`);
   }
@@ -184,6 +188,7 @@ export const deleteUserFromDb = async (username: string): Promise<void> => {
   const colPath = 'users';
   try {
     await deleteDoc(doc(db, colPath, username));
+    logDatabaseAction(`ลบบัญชีผู้ใช้งานระบบสำเร็จ: ${username}`, 'warn');
   } catch (err) {
     handleFirestoreError(err, OperationType.DELETE, `${colPath}/${username}`);
   }
@@ -225,4 +230,60 @@ export const seedInitialData = async (): Promise<{ products: Product[]; transact
   }
 
   return { products: finalProducts, transactions: finalTransactions, users: finalUsers };
+};
+
+/**
+ * Log actions to the global Real-time Database Monitor
+ */
+export const logDatabaseAction = (text: string, type: 'info' | 'success' | 'warn' = 'info') => {
+  const timestamp = new Date().toLocaleTimeString('th-TH');
+  const logEntry = {
+    id: String(Date.now()) + Math.random().toString(36).substring(2, 7),
+    time: timestamp,
+    text,
+    type
+  };
+  
+  if (typeof window !== 'undefined') {
+    if (!(window as any).__db_logs) {
+      (window as any).__db_logs = [];
+    }
+    (window as any).__db_logs.unshift(logEntry);
+    // Limit to 200 logs to preserve memory
+    if ((window as any).__db_logs.length > 200) {
+      (window as any).__db_logs.pop();
+    }
+    // Dispatch a custom event so listeners can capture this in real-time
+    window.dispatchEvent(new CustomEvent('db-action-log', { detail: logEntry }));
+  }
+};
+
+/**
+ * Fetch stored Google Drive folder URL
+ */
+export const getGoogleDriveUrl = async (): Promise<string> => {
+  try {
+    const docSnap = await getDoc(doc(db, 'settings', 'google_drive'));
+    if (docSnap.exists()) {
+      return docSnap.data().url || '';
+    }
+    return '';
+  } catch (err) {
+    console.error('Error fetching Google Drive URL from Firestore:', err);
+    return '';
+  }
+};
+
+/**
+ * Save Google Drive folder URL
+ */
+export const saveGoogleDriveUrl = async (url: string): Promise<void> => {
+  try {
+    await setDoc(doc(db, 'settings', 'google_drive'), { url, updatedAt: new Date().toISOString() });
+    logDatabaseAction(`บันทึก/อัปเดตลิงก์โฟลเดอร์ Google Drive: ${url}`, 'success');
+  } catch (err) {
+    console.error('Error saving Google Drive URL to Firestore:', err);
+    logDatabaseAction(`เกิดข้อผิดพลาดในการบันทึกลิงก์ Google Drive: ${err instanceof Error ? err.message : String(err)}`, 'warn');
+    throw err;
+  }
 };

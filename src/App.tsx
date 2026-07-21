@@ -24,7 +24,8 @@ import {
   saveTransaction,
   saveUser,
   deleteUserFromDb,
-  db
+  db,
+  logDatabaseAction
 } from './utils/firebase';
 import { doc, deleteDoc, onSnapshot, collection } from 'firebase/firestore';
 
@@ -202,12 +203,33 @@ export default function App() {
   const handleLoginSuccess = (user: User) => {
     setCurrentUser(user);
     setActiveTab('dashboard');
+    logDatabaseAction(`ผู้ใช้งาน ${user.fullName} (@${user.username}) เข้าสู่ระบบสำเร็จ [บทบาท: ${user.role}]`, 'success');
   };
 
   const handleLogout = () => {
+    if (currentUser) {
+      logDatabaseAction(`ผู้ใช้งาน ${currentUser.fullName} (@${currentUser.username}) ออกจากระบบ`, 'info');
+    }
     setCurrentUser(null);
     setActiveTab('dashboard');
   };
+
+  useEffect(() => {
+    if (currentUser) {
+      const tabLabels: Record<string, string> = {
+        dashboard: 'แผงควบคุมหลัก (Dashboard)',
+        inventory: 'ทะเบียนคลังพัสดุ (Inventory)',
+        intake: 'นำเข้าพัสดุ (Intake)',
+        withdraw: 'เบิกจ่ายพัสดุ (Withdraw)',
+        logs: 'ประวัติการเคลื่อนไหว (Activity Logs)',
+        reports: 'รายงานและสถิติ (Reports)',
+        firebase_db: 'จัดการฐานข้อมูล Cloud Firestore & Google Drive',
+        users: 'จัดการข้อมูลผู้ใช้ (User Management)'
+      };
+      const label = tabLabels[activeTab] || activeTab;
+      logDatabaseAction(`ผู้ใช้งาน ${currentUser.fullName} เข้าสู่เมนู: ${label}`, 'info');
+    }
+  }, [activeTab, currentUser]);
 
   // ดึงสินค้าจากหน้าจอเพื่อเข้าไปจัดการนำเข้า
   const handleSelectProductForIntake = (code: string) => {

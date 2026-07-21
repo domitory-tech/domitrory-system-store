@@ -20,10 +20,16 @@ import {
   Activity,
   Wifi,
   Clock,
-  FileText
+  FileText,
+  Folder,
+  FolderOpen,
+  Save,
+  FileImage,
+  Copy
 } from 'lucide-react';
 import { Product, Transaction, User } from '../types';
 import { exportAllDatabaseToSheets } from '../utils/exportSheets';
+import { getGoogleDriveUrl, saveGoogleDriveUrl, logDatabaseAction } from '../utils/firebase';
 
 interface FirebaseConfigProps {
   products: Product[];
@@ -46,19 +52,68 @@ export default function FirebaseConfig({
   const [restoreStatus, setRestoreStatus] = useState<'IDLE' | 'READING' | 'SUCCESS' | 'ERROR'>('IDLE');
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [logs, setLogs] = useState<{ id: string; time: string; text: string; type: 'info' | 'success' | 'warn' }[]>([]);
+  const [driveUrl, setDriveUrl] = useState<string>('');
+  const [isSavingDriveUrl, setIsSavingDriveUrl] = useState<boolean>(false);
+  const [saveDriveUrlSuccess, setSaveDriveUrlSuccess] = useState<boolean>(false);
+
+  // Load Google Drive URL on mount
+  useEffect(() => {
+    const fetchDriveUrl = async () => {
+      const url = await getGoogleDriveUrl();
+      setDriveUrl(url);
+    };
+    fetchDriveUrl();
+  }, []);
 
   // Live Firebase connection stream logs
   useEffect(() => {
-    const timestamp = new Date().toLocaleTimeString('th-TH');
-    const initialLogs = [
-      { id: '1', time: timestamp, text: 'เชื่อมต่อกับเซิร์ฟเวอร์ Cloud Firestore เป็นที่เรียบร้อย...', type: 'info' as const },
-      { id: '2', time: timestamp, text: `จับคู่ Snapshot Listener สองทิศทางสำหรับคอลเลกชัน 'products' (พบพัสดุ ${products.length} รายการ)`, type: 'success' as const },
-      { id: '3', time: timestamp, text: `จับคู่ Snapshot Listener สองทิศทางสำหรับคอลเลกชัน 'transactions' (พบประวัติ ${transactions.length} รายการ)`, type: 'success' as const },
-      { id: '4', time: timestamp, text: `จับคู่ Snapshot Listener สองทิศทางสำหรับคอลเลกชัน 'users' (พบผู้ใช้ ${users.length} คน)`, type: 'success' as const },
-      { id: '5', time: timestamp, text: 'ระบบซิงโครไนซ์แบบเรียลไทม์มีความเสถียร (ความหน่วงเฉลี่ย: 38ms)', type: 'info' as const },
-    ];
-    setLogs(initialLogs);
+    // Read from window.__db_logs if it exists
+    if ((window as any).__db_logs && (window as any).__db_logs.length > 0) {
+      setLogs((window as any).__db_logs);
+    } else {
+      const timestamp = new Date().toLocaleTimeString('th-TH');
+      const initialLogs = [
+        { id: '1', time: timestamp, text: 'เชื่อมต่อกับเซิร์ฟเวอร์ Cloud Firestore เป็นที่เรียบร้อย...', type: 'info' as const },
+        { id: '2', time: timestamp, text: `จับคู่ Snapshot Listener สองทิศทางสำหรับคอลเลกชัน 'products' (พบพัสดุ ${products.length} รายการ)`, type: 'success' as const },
+        { id: '3', time: timestamp, text: `จับคู่ Snapshot Listener สองทิศทางสำหรับคอลเลกชัน 'transactions' (พบประวัติ ${transactions.length} รายการ)`, type: 'success' as const },
+        { id: '4', time: timestamp, text: `จับคู่ Snapshot Listener สองทิศทางสำหรับคอลเลกชัน 'users' (พบผู้ใช้ ${users.length} คน)`, type: 'success' as const },
+        { id: '5', time: timestamp, text: 'ระบบซิงโครไนซ์แบบเรียลไทม์มีความเสถียร (ความหน่วงเฉลี่ย: 38ms)', type: 'info' as const },
+      ];
+      (window as any).__db_logs = initialLogs;
+      setLogs(initialLogs);
+    }
+
+    const handleNewLog = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail) {
+        setLogs((prev) => {
+          if (prev.some(log => log.id === customEvent.detail.id)) return prev;
+          return [customEvent.detail, ...prev].slice(0, 200);
+        });
+      }
+    };
+
+    window.addEventListener('db-action-log', handleNewLog);
+    return () => {
+      window.removeEventListener('db-action-log', handleNewLog);
+    };
   }, [products.length, transactions.length, users.length]);
+
+  // Handle Save Google Drive URL
+  const handleSaveDriveUrl = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingDriveUrl(true);
+    setSaveDriveUrlSuccess(false);
+    try {
+      await saveGoogleDriveUrl(driveUrl.trim());
+      setSaveDriveUrlSuccess(true);
+      setTimeout(() => setSaveDriveUrlSuccess(false), 3000);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSavingDriveUrl(false);
+    }
+  };
 
   // Handle Backup (Export DB as JSON file)
   const handleBackup = () => {
@@ -83,12 +138,8 @@ export default function FirebaseConfig({
       link.click();
       document.body.removeChild(link);
       
-      // Append success log
-      const logTime = new Date().toLocaleTimeString('th-TH');
-      setLogs((prev) => [
-        { id: String(Date.now()), time: logTime, text: `สำรองข้อมูลสำเร็จ! ดาวน์โหลดไฟล์ คลังพัสดุหอพัก_สำรองข้อมูล_${timestamp}.json`, type: 'success' },
-        ...prev
-      ]);
+      // Broadcast success log
+      logDatabaseAction(`สำรองข้อมูลคลังสำเร็จ! ดาวน์โหลดไฟล์ คลังพัสดุหอพัก_สำรองข้อมูล_${timestamp}.json`, 'success');
     } catch (err: any) {
       alert('การสำรองข้อมูลล้มเหลว: ' + err.message);
     }
@@ -135,12 +186,8 @@ export default function FirebaseConfig({
         const fileInput = document.getElementById('restore-file-input') as HTMLInputElement;
         if (fileInput) fileInput.value = '';
 
-        // Append to connection log
-        const logTime = new Date().toLocaleTimeString('th-TH');
-        setLogs((prev) => [
-          { id: String(Date.now()), time: logTime, text: `นำเข้าข้อมูลและกู้คืน (Restore DB) สำเร็จ: นำเข้าพัสดุ ${restoredProducts.length} รายการ, ประวัติ ${restoredTransactions.length} รายการ`, type: 'success' },
-          ...prev
-        ]);
+        // Broadcast to connection log
+        logDatabaseAction(`นำเข้าข้อมูลและกู้คืน (Restore DB) สำเร็จ: นำเข้าพัสดุ ${restoredProducts.length} รายการ, ประวัติ ${restoredTransactions.length} รายการ`, 'success');
       } catch (err: any) {
         setRestoreStatus('ERROR');
         setErrorMessage(err.message || 'การอ่านไฟล์ล้มเหลว โครงสร้าง JSON เสียหาย');
@@ -157,12 +204,8 @@ export default function FirebaseConfig({
   const handleExportToSheets = () => {
     exportAllDatabaseToSheets(products, transactions, users);
     
-    // Append log
-    const logTime = new Date().toLocaleTimeString('th-TH');
-    setLogs((prev) => [
-      { id: String(Date.now()), time: logTime, text: `ส่งออกคลังพัสดุเป็นแผ่นงานสไตล์ Google Sheets สำเร็จ`, type: 'success' },
-      ...prev
-    ]);
+    // Broadcast log
+    logDatabaseAction(`ส่งออกคลังพัสดุทั้งหมดเป็นแผ่นงานสไตล์ Google Sheets สำเร็จ`, 'success');
   };
 
   return (
@@ -237,30 +280,100 @@ export default function FirebaseConfig({
 
       {/* Main Configurations & Tools */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Left Column: Firebase details */}
-        <div className="p-6 bg-white border border-slate-200 rounded-2xl space-y-4 md:col-span-2">
-          <h3 className="font-bold text-slate-900 text-sm">การเชื่อมต่อฐานข้อมูลปัจจุบัน</h3>
-          <p className="text-xs text-slate-500 leading-relaxed font-light">
-            ระบบจัดเก็บพัสดุในหอพักนี้เชื่อมโยงกับฐานข้อมูลสัญชาติอเมริกัน Cloud Firestore บน Google Cloud Platform แบบเรียลไทม์ การอัปเดตข้อมูล นำเข้า เบิกจ่าย หรือแก้ไขรหัสผ่านผู้ใช้งานใดๆ จะประสานงานไปยังดาต้าเซ็นเตอร์ Cloud ทันที ช่วยเพิ่มความน่าเชื่อถือ ปลอดภัย และเปิดใช้งานการทำงานร่วมกันแบบหลายผู้ใช้งาน (Multi-User Collaboration) ทันที
-          </p>
+        {/* Left Column: Stack of Connection details and Google Drive configs */}
+        <div className="space-y-6 md:col-span-2">
+          {/* 1. Database connection card */}
+          <div className="p-6 bg-white border border-slate-200 rounded-2xl space-y-4 shadow-sm">
+            <h3 className="font-bold text-slate-900 text-sm">การเชื่อมต่อฐานข้อมูลปัจจุบัน</h3>
+            <p className="text-xs text-slate-500 leading-relaxed font-light">
+              ระบบจัดเก็บพัสดุในหอพักนี้เชื่อมโยงกับฐานข้อมูลสัญชาติอเมริกัน Cloud Firestore บน Google Cloud Platform แบบเรียลไทม์ การอัปเดตข้อมูล นำเข้า เบิกจ่าย หรือแก้ไขรหัสผ่านผู้ใช้งานใดๆ จะประสานงานไปยังดาต้าเซ็นเตอร์ Cloud ทันที ช่วยเพิ่มความน่าเชื่อถือ ปลอดภัย และเปิดใช้งานการทำงานร่วมกันแบบหลายผู้ใช้งาน (Multi-User Collaboration) ทันที
+            </p>
 
-          <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-100 text-xs font-light">
-            <div className="flex justify-between py-1.5 border-b border-slate-200/60">
-              <span className="text-slate-400">ชนิดฐานข้อมูล:</span>
-              <span className="font-bold text-slate-700 font-mono text-[11px]">Cloud Firestore (NoSQL)</span>
+            <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-100 text-xs font-light">
+              <div className="flex justify-between py-1.5 border-b border-slate-200/60">
+                <span className="text-slate-400">ชนิดฐานข้อมูล:</span>
+                <span className="font-bold text-slate-700 font-mono text-[11px]">Cloud Firestore (NoSQL)</span>
+              </div>
+              <div className="flex justify-between py-1.5 border-b border-slate-200/60">
+                <span className="text-slate-400">การระบุตัวตนสิทธิ์การเข้าถึง:</span>
+                <span className="font-bold text-slate-700 font-mono text-[11px]">Anonymous Authentication (Resilient Fallback)</span>
+              </div>
+              <div className="flex justify-between py-1.5 border-b border-slate-200/60">
+                <span className="text-slate-400">ระดับความปลอดภัยระดับข้อมูล:</span>
+                <span className="font-bold text-emerald-600">สิทธิ์อ่าน-เขียนผ่าน Rules ที่คุ้มครองความปลอดภัยสูงสุด</span>
+              </div>
+              <div className="flex justify-between py-1.5">
+                <span className="text-slate-400">เซิร์ฟเวอร์ระบบ:</span>
+                <span className="text-indigo-600 font-bold">Google Cloud Platform (Asia-Southeast1)</span>
+              </div>
             </div>
-            <div className="flex justify-between py-1.5 border-b border-slate-200/60">
-              <span className="text-slate-400">การระบุตัวตนสิทธิ์การเข้าถึง:</span>
-              <span className="font-bold text-slate-700 font-mono text-[11px]">Anonymous Authentication (Resilient Fallback)</span>
+          </div>
+
+          {/* 2. Google Drive Configuration Card */}
+          <div className="p-6 bg-white border border-slate-200 rounded-2xl space-y-4 shadow-sm">
+            <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+              <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+                <Folder className="h-5 w-5 animate-pulse" />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-900 text-sm">ที่เก็บรูปภาพพัสดุบน Google Drive</h3>
+                <p className="text-[11px] text-slate-400 font-light mt-0.5">เชื่อมโยงคลังรูปภาพและเอกสารของคุณกับระบบคลังพัสดุหอพัก</p>
+              </div>
             </div>
-            <div className="flex justify-between py-1.5 border-b border-slate-200/60">
-              <span className="text-slate-400">ระดับความปลอดภัยระดับข้อมูล:</span>
-              <span className="font-bold text-emerald-600">สิทธิ์อ่าน-เขียนผ่าน Rules ที่คุ้มครองความปลอดภัยสูงสุด</span>
-            </div>
-            <div className="flex justify-between py-1.5">
-              <span className="text-slate-400">เซิร์ฟเวอร์ระบบ:</span>
-              <span className="text-indigo-600 font-bold">Google Cloud Platform (Asia-Southeast1)</span>
-            </div>
+
+            <form onSubmit={handleSaveDriveUrl} className="space-y-4">
+              <div>
+                <label htmlFor="drive-folder-url" className="block text-xs font-semibold text-slate-600 mb-1.5 flex items-center gap-1.5">
+                  <ExternalLink className="h-3.5 w-3.5 text-indigo-500" />
+                  ระบุ URL ของโฟลเดอร์ Google Drive สำหรับจัดเก็บไฟล์ภาพ:
+                </label>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    id="drive-folder-url"
+                    type="url"
+                    value={driveUrl}
+                    onChange={(e) => setDriveUrl(e.target.value)}
+                    placeholder="https://drive.google.com/drive/folders/xxxxxxxxxxxxx"
+                    className="flex-1 bg-slate-50 text-slate-800 text-xs px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-mono"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isSavingDriveUrl}
+                    className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition-all active:scale-95 flex items-center justify-center gap-1.5 shadow-md shadow-indigo-600/10 cursor-pointer disabled:opacity-50"
+                  >
+                    <Save className="h-4 w-4" />
+                    {isSavingDriveUrl ? 'กำลังบันทึก...' : 'บันทึก URL โฟลเดอร์'}
+                  </button>
+                </div>
+              </div>
+
+              {saveDriveUrlSuccess && (
+                <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-xl flex items-center gap-2 text-xs text-emerald-700 font-semibold animate-fade-in">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                  บันทึกข้อมูลลิงก์ Google Drive ลงระบบ Cloud เรียบร้อยแล้ว!
+                </div>
+              )}
+
+              <div className="p-4 bg-slate-50 border border-slate-200/60 rounded-xl space-y-2">
+                <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                  <FileImage className="h-4 w-4 text-indigo-500" />
+                  แนวทางการจัดเก็บรูปภาพในโฟลเดอร์ Google Drive:
+                </h4>
+                <ul className="text-[11px] text-slate-500 space-y-1.5 list-disc pl-4.5 leading-relaxed font-light">
+                  <li>ตั้งชื่อไฟล์รูปภาพใน Google Drive ด้วย <span className="font-bold text-slate-850 text-indigo-600">รหัสอุปกรณ์พัสดุ</span> เช่น <code className="bg-slate-200 px-1 py-0.5 rounded text-slate-700 font-mono text-[10px]">A001.jpg</code> หรือ <code className="bg-slate-200 px-1 py-0.5 rounded text-slate-700 font-mono text-[10px]">A001.png</code> เพื่อสะดวกต่อการเข้าตรวจสอบ</li>
+                  <li>ตั้งค่าสิทธิ์การเข้าถึงโฟลเดอร์ Google Drive เป็น <span className="font-bold text-indigo-600">"ทุกคนที่มีลิงก์มีสิทธิ์อ่าน" (Anyone with the link can view)</span> เพื่อให้ระบบสามารถดึงรูปภาพพัสดุมาพรีวิวแสดงผลในระบบได้อย่างเสถียร</li>
+                  {driveUrl && (
+                    <li className="text-indigo-600 font-semibold flex items-center gap-1.5 mt-2">
+                      <FolderOpen className="h-3.5 w-3.5" />
+                      <a href={driveUrl} target="_blank" rel="noopener noreferrer" className="underline hover:text-indigo-700 flex items-center gap-1">
+                        คลิกเปิดโฟลเดอร์ Google Drive นี้โดยตรงเพื่อเพิ่ม/ดูภาพ
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    </li>
+                  )}
+                </ul>
+              </div>
+            </form>
           </div>
         </div>
 
