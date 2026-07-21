@@ -26,7 +26,7 @@ import {
   deleteUserFromDb,
   db
 } from './utils/firebase';
-import { doc, deleteDoc } from 'firebase/firestore';
+import { doc, deleteDoc, onSnapshot, collection } from 'firebase/firestore';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -65,16 +65,54 @@ export default function App() {
     }
   }, [users]);
 
-  // Initialize and load from Firebase
+  // Initialize and load from Firebase with real-time listeners
   useEffect(() => {
-    const loadFirebaseData = async () => {
+    let unsubscribeProducts: () => void;
+    let unsubscribeTransactions: () => void;
+    let unsubscribeUsers: () => void;
+
+    const setupFirebaseListeners = async () => {
       setIsLoadingDb(true);
       try {
         await initFirebaseConnection();
-        const data = await seedInitialData();
-        setProducts(data.products);
-        setTransactions(data.transactions);
-        setUsers(data.users);
+        // Seed initial data if DB is completely empty
+        await seedInitialData();
+
+        // Subscribe to products collection in real-time
+        unsubscribeProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
+          const prodList: Product[] = [];
+          snapshot.forEach((doc) => {
+            prodList.push(doc.data() as Product);
+          });
+          setProducts(prodList);
+        }, (error) => {
+          console.error("Products subscription error:", error);
+        });
+
+        // Subscribe to transactions collection in real-time
+        unsubscribeTransactions = onSnapshot(collection(db, 'transactions'), (snapshot) => {
+          const txList: Transaction[] = [];
+          snapshot.forEach((doc) => {
+            txList.push(doc.data() as Transaction);
+          });
+          // Sort transactions descending by timestamp
+          const sorted = txList.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+          setTransactions(sorted);
+        }, (error) => {
+          console.error("Transactions subscription error:", error);
+        });
+
+        // Subscribe to users collection in real-time
+        unsubscribeUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
+          const userList: User[] = [];
+          snapshot.forEach((doc) => {
+            userList.push(doc.data() as User);
+          });
+          setUsers(userList);
+        }, (error) => {
+          console.error("Users subscription error:", error);
+        });
+
       } catch (err: any) {
         console.error('Failed to load Firebase data:', err);
         setSyncError('กำลังรันระบบในโหมดสำรองข้อมูลท้องถิ่น (Local Fallback Mode) เนื่องจากเชื่อมต่อ Firebase ไม่สำเร็จ: ' + err.message);
@@ -94,7 +132,14 @@ export default function App() {
         setIsLoadingDb(false);
       }
     };
-    loadFirebaseData();
+
+    setupFirebaseListeners();
+
+    return () => {
+      if (unsubscribeProducts) unsubscribeProducts();
+      if (unsubscribeTransactions) unsubscribeTransactions();
+      if (unsubscribeUsers) unsubscribeUsers();
+    };
   }, []);
 
   const handleAddUser = async (newUser: User) => {

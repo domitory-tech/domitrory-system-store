@@ -71,15 +71,22 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   throw new Error(JSON.stringify(errInfo));
 }
 
-// Initial connection with Anonymous Auth
+// Initial connection with optional Anonymous Auth
 export const initFirebaseConnection = async (): Promise<void> => {
   try {
-    await signInAnonymously(auth);
-    await getDocFromServer(doc(db, 'test', 'connection'));
+    // Attempt anonymous sign-in but do not block if disabled in Firebase console
+    await signInAnonymously(auth).catch((err) => {
+      console.warn("Anonymous Authentication is not enabled in Firebase Console. Proceeding with public access rules.", err);
+    });
+    // Test connection with a valid collection allowed by rules
+    const testSnapshot = await getDocs(collection(db, 'users'));
+    console.log("Firebase connection established successfully, found users count:", testSnapshot.size);
   } catch (error) {
+    console.error("Firebase connection test failed: ", error);
     if (error instanceof Error && error.message.includes('the client is offline')) {
       console.error("Please check your Firebase configuration.");
     }
+    throw error;
   }
 };
 
