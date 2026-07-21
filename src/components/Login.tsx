@@ -28,7 +28,16 @@ export default function Login({ onLoginSuccess, users }: LoginProps) {
       const u = username.trim().toLowerCase();
       const p = password.trim();
 
-      const foundUser = users.find(user => user.username.toLowerCase() === u);
+      let foundUser = users.find(user => user.username.toLowerCase() === u);
+
+      // Fallback to hardcoded default users if not found in db users
+      if (!foundUser) {
+        const defaultUsers: User[] = [
+          { username: 'admin', fullName: 'ผู้ดูแลระบบทั่วไป', role: 'Admin', password: 'admin1234' },
+          { username: 'staff', fullName: 'เจ้าหน้าที่พัสดุหอพัก', role: 'Staff', password: 'staff1234' }
+        ];
+        foundUser = defaultUsers.find(user => user.username.toLowerCase() === u);
+      }
 
       if (foundUser && (foundUser.password === p || (!foundUser.password && p === '1234'))) {
         onLoginSuccess(foundUser);

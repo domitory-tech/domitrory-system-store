@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { LayoutDashboard, Package, ArrowUpRight, ArrowDownRight, RefreshCcw, LogOut, Menu, X, Warehouse, FileText, AlertCircle, Database, Users } from 'lucide-react';
 import { User, Product, Transaction } from './types';
-import { INITIAL_CATEGORIES } from './data/mockData';
+import { INITIAL_PRODUCTS, INITIAL_TRANSACTIONS, INITIAL_CATEGORIES } from './data/mockData';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import Inventory from './components/Inventory';
@@ -46,6 +46,25 @@ export default function App() {
   // ข้อมูลผู้ใช้งานระบบสโตร์
   const [users, setUsers] = useState<User[]>([]);
 
+  // Automatically persist locally as a secondary backup/fallback
+  useEffect(() => {
+    if (products.length > 0) {
+      localStorage.setItem('gas_store_products', JSON.stringify(products));
+    }
+  }, [products]);
+
+  useEffect(() => {
+    if (transactions.length > 0) {
+      localStorage.setItem('gas_store_transactions', JSON.stringify(transactions));
+    }
+  }, [transactions]);
+
+  useEffect(() => {
+    if (users.length > 0) {
+      localStorage.setItem('gas_store_users', JSON.stringify(users));
+    }
+  }, [users]);
+
   // Initialize and load from Firebase
   useEffect(() => {
     const loadFirebaseData = async () => {
@@ -58,7 +77,19 @@ export default function App() {
         setUsers(data.users);
       } catch (err: any) {
         console.error('Failed to load Firebase data:', err);
-        setSyncError('ไม่สามารถดึงข้อมูลจาก Cloud Firestore ได้: ' + err.message);
+        setSyncError('กำลังรันระบบในโหมดสำรองข้อมูลท้องถิ่น (Local Fallback Mode) เนื่องจากเชื่อมต่อ Firebase ไม่สำเร็จ: ' + err.message);
+        
+        // Load fallback from localStorage or mock data
+        const savedProducts = localStorage.getItem('gas_store_products');
+        const savedTransactions = localStorage.getItem('gas_store_transactions');
+        const savedUsers = localStorage.getItem('gas_store_users');
+
+        setProducts(savedProducts ? JSON.parse(savedProducts) : INITIAL_PRODUCTS);
+        setTransactions(savedTransactions ? JSON.parse(savedTransactions) : INITIAL_TRANSACTIONS);
+        setUsers(savedUsers ? JSON.parse(savedUsers) : [
+          { username: 'admin', fullName: 'ผู้ดูแลระบบทั่วไป', role: 'Admin', password: 'admin1234' },
+          { username: 'staff', fullName: 'เจ้าหน้าที่พัสดุหอพัก', role: 'Staff', password: 'staff1234' }
+        ]);
       } finally {
         setIsLoadingDb(false);
       }
