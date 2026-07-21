@@ -390,7 +390,7 @@ export default function App() {
 
   // ล้างข้อมูลทั้งหมด
   const handleResetLocalData = async () => {
-    if (window.confirm('⚠️ คุณแน่ใจหรือไม่ว่าต้องการล้างข้อมูลพัสดุและรายการทั้งหมดออกจากระบบ? การกระทำนี้จะลบข้อมูลจาก Firebase ถาวร และไม่สามารถย้อนกลับได้')) {
+    if (window.confirm('⚠️ คุณแน่ใจหรือไม่ว่าต้องการล้างข้อมูลพัสดุและประวัติทั้งหมดออกจากระบบ? การกระทำนี้จะลบข้อมูลออกจากระบบฐานข้อมูล Firebase แบบถาวรและไม่สามารถย้อนกลับได้')) {
       setIsSyncing(true);
       setSyncError(null);
       try {
@@ -402,13 +402,61 @@ export default function App() {
         }
         setProducts([]);
         setTransactions([]);
-        setSyncSuccessMessage('ล้างข้อมูลพัสดุในฐานข้อมูล Firebase เรียบร้อยแล้ว!');
+        setSyncSuccessMessage('ล้างข้อมูลพัสดุและรายการเคลื่อนไหวทั้งหมดใน Firebase สำเร็จ!');
         setTimeout(() => setSyncSuccessMessage(''), 3000);
       } catch (err: any) {
         setSyncError('ล้างข้อมูลผิดพลาด: ' + err.message);
       } finally {
         setIsSyncing(false);
       }
+    }
+  };
+
+  // นำเข้าข้อมูลและเขียนทับฐานข้อมูลเดิม (Restore DB)
+  const handleRestoreLocalData = async (
+    restoredProducts: Product[],
+    restoredTransactions: Transaction[],
+    restoredUsers: User[]
+  ) => {
+    setIsSyncing(true);
+    setSyncError(null);
+    try {
+      // 1. ล้างข้อมูลเก่า
+      for (const p of products) {
+        await deleteProductFromDb(p.code);
+      }
+      for (const t of transactions) {
+        await deleteDoc(doc(db, 'transactions', t.id));
+      }
+      
+      // ลบผู้ใช้เก่ายกเว้น user ปัจจุบัน เพื่อป้องกัน session ปัญหาหลุดกลางคัน
+      for (const u of users) {
+        if (u.username !== currentUser?.username) {
+          await deleteUserFromDb(u.username);
+        }
+      }
+
+      // 2. นำเข้าข้อมูลใหม่จากไฟล์สำรอง
+      for (const p of restoredProducts) {
+        await saveProduct(p);
+      }
+      for (const t of restoredTransactions) {
+        await saveTransaction(t);
+      }
+      for (const u of restoredUsers) {
+        await saveUser(u);
+      }
+
+      setProducts(restoredProducts);
+      setTransactions(restoredTransactions);
+      setUsers(restoredUsers);
+
+      setSyncSuccessMessage('กู้คืนฐานข้อมูลจากไฟล์สำรอง (Restore DB) เรียบร้อยสมบูรณ์แล้ว!');
+      setTimeout(() => setSyncSuccessMessage(''), 4000);
+    } catch (err: any) {
+      setSyncError('เกิดข้อผิดพลาดในการนำเข้าข้อมูลสำรอง: ' + err.message);
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -664,6 +712,7 @@ export default function App() {
               transactions={transactions}
               users={users}
               onResetData={handleResetLocalData}
+              onRestoreData={handleRestoreLocalData}
               currentUser={currentUser}
             />
           )}

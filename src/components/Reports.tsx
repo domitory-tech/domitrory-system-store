@@ -23,6 +23,7 @@ import {
   Info
 } from 'lucide-react';
 import { Product, Transaction } from '../types';
+import { exportReportToGoogleSheets } from '../utils/exportSheets';
 
 interface ReportsProps {
   products: Product[];
@@ -31,7 +32,7 @@ interface ReportsProps {
 }
 
 type ReportType = 'INTAKE' | 'WITHDRAW' | 'REMAINING';
-type ExportFormat = 'EXCEL' | 'PDF';
+type ExportFormat = 'EXCEL' | 'PDF' | 'GOOGLE_SHEETS';
 
 export default function Reports({ products, transactions, categories }: ReportsProps) {
   const [activeReport, setActiveReport] = useState<ReportType>('INTAKE');
@@ -140,9 +141,114 @@ export default function Reports({ products, transactions, categories }: ReportsP
 
     if (format === 'EXCEL') {
       exportToExcel(pendingExportType);
+    } else if (format === 'GOOGLE_SHEETS') {
+      exportToGoogleSheetsFormat(pendingExportType);
     } else {
       exportToPdf(pendingExportType);
     }
+  };
+
+  // Function to Export with beautiful Google Sheets styled spreadsheet
+  const exportToGoogleSheetsFormat = (type: ReportType) => {
+    let headers: string[] = [];
+    let rows: string[][] = [];
+    let reportTitle = '';
+    let subtitle = '';
+
+    const displayStart = startDate ? formatThaiDate(startDate) : 'เริ่มต้น';
+    const displayEnd = endDate ? formatThaiDate(endDate) : 'ปัจจุบัน';
+
+    if (type === 'INTAKE') {
+      reportTitle = 'รายงานการนำเข้าอุปกรณ์พัสดุหอพัก (Google Sheets Style)';
+      subtitle = `ช่วงวันที่ทำรายการ: ${displayStart} ถึง ${displayEnd}`;
+      headers = [
+        'ลำดับ',
+        'วัน-เวลาทำรายการ',
+        'รหัสอุปกรณ์',
+        'ชื่ออุปกรณ์',
+        'หมวดหมู่อุปกรณ์',
+        'จำนวนที่นำเข้า',
+        'หน่วยนับ',
+        'ยอดคลังก่อนหน้า',
+        'ยอดคลังล่าสุด',
+        'ผู้ทำรายการ',
+        'หมายเหตุ'
+      ];
+      rows = filteredIntakes.map((tx, idx) => [
+        String(idx + 1),
+        tx.timestamp,
+        tx.code,
+        tx.productName,
+        tx.category,
+        String(tx.quantity),
+        products.find(p => p.code === tx.code)?.unit || 'ชิ้น',
+        String(tx.prevQuantity),
+        String(tx.newQuantity),
+        tx.operator,
+        tx.note || '-'
+      ]);
+    } else if (type === 'WITHDRAW') {
+      reportTitle = 'รายงานการเบิกจ่ายอุปกรณ์พัสดุหอพัก (Google Sheets Style)';
+      subtitle = `ช่วงวันที่ทำรายการ: ${displayStart} ถึง ${displayEnd}`;
+      headers = [
+        'ลำดับ',
+        'วัน-เวลาทำรายการ',
+        'รหัสอุปกรณ์',
+        'ชื่ออุปกรณ์',
+        'หมวดหมู่อุปกรณ์',
+        'อาคารสถานที่จัดเก็บ',
+        'จำนวนที่เบิกจ่าย',
+        'หน่วยนับ',
+        'ผู้ทำรายการเบิกจ่าย',
+        'ผู้รับอุปกรณ์',
+        'วัตถุประสงค์ / หมายเหตุ'
+      ];
+      rows = filteredWithdrawals.map((tx, idx) => {
+        const pItem = products.find(p => p.code === tx.code);
+        return [
+          String(idx + 1),
+          tx.timestamp,
+          tx.code,
+          tx.productName,
+          tx.category,
+          pItem?.building ? `${pItem.building} (${pItem.location || '-'})` : '-',
+          String(tx.quantity),
+          pItem?.unit || 'ชิ้น',
+          tx.operator,
+          tx.recipient || '-',
+          tx.note || '-'
+        ];
+      });
+    } else if (type === 'REMAINING') {
+      reportTitle = 'รายงานระดับสินค้าพัสดุคงเหลือในคลัง (Google Sheets Style)';
+      subtitle = `เกณฑ์ขั้นต่ำเตือนภัยต่ำกว่า: ${remainingThreshold} ชิ้น`;
+      headers = [
+        'ลำดับ',
+        'รหัสอุปกรณ์',
+        'ชื่ออุปกรณ์',
+        'หมวดหมู่อุปกรณ์',
+        'อาคารสถานที่เก็บ',
+        'จุดเก็บพัสดุ',
+        'จำนวนคงเหลือปัจจุบัน',
+        'หน่วยนับ',
+        'เกณฑ์ขั้นต่ำเตือนภัย',
+        'อัปเดตล่าสุด'
+      ];
+      rows = filteredRemaining.map((p, idx) => [
+        String(idx + 1),
+        p.code,
+        p.name,
+        p.category,
+        p.building || '-',
+        p.location || '-',
+        String(p.quantity),
+        p.unit,
+        String(p.minStock),
+        p.updatedAt
+      ]);
+    }
+
+    exportReportToGoogleSheets(type, reportTitle, subtitle, headers, rows);
   };
 
   // Helper: Format Thai Date for Reports
@@ -1082,7 +1188,22 @@ export default function Reports({ products, transactions, categories }: ReportsP
                   </div>
                   <div>
                     <h4 className="font-bold text-slate-800 text-sm group-hover:text-emerald-900 transition-colors">ส่งออกไฟล์ข้อมูล Excel (.csv)</h4>
-                    <p className="text-[11px] text-slate-500 mt-0.5">รองรับสูตร คัดลอกเปิดใน Excel/Sheets ภาษาไทยสมบูรณ์แบบไม่เพี้ยน</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">รองรับสูตร คัดลอกเปิดใน Excel ภาษาไทยสมบูรณ์แบบไม่เพี้ยน</p>
+                  </div>
+                </button>
+
+                {/* Format 1.5: GOOGLE SHEETS */}
+                <button
+                  type="button"
+                  onClick={() => handleExportConfirm('GOOGLE_SHEETS')}
+                  className="flex items-center gap-4 p-4 border border-slate-200 hover:border-emerald-500 bg-slate-50 hover:bg-emerald-50/60 rounded-2xl text-left transition-all cursor-pointer group active:scale-98"
+                >
+                  <div className="p-3 bg-emerald-600 text-white rounded-xl group-hover:scale-105 transition-all">
+                    <FileSpreadsheet className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-slate-800 text-sm group-hover:text-emerald-700 transition-colors">ส่งออกในรูปแบบ Google Sheets</h4>
+                    <p className="text-[11px] text-slate-500 mt-0.5">จัดระเบียบตารางพร้อมสไตล์แบรนด์ Google Sheets และแทรกวันเวลาทำรายการละเอียด</p>
                   </div>
                 </button>
 

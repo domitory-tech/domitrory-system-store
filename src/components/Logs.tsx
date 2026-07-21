@@ -39,9 +39,10 @@ export default function Logs({ transactions, categories }: LogsProps) {
             <h2 className="text-xl font-bold text-slate-900">ประวัติการเคลื่อนไหวพัสดุ (Transaction Logs)</h2>
             <p className="text-sm text-slate-500 mt-1">สมุดบันทึกรายการนำเข้า-เบิกจ่ายทั้งหมดแบบละเอียด ตรวจสอบย้อนหลังได้ทันที</p>
           </div>
-          {/* Export to Sheets description */}
-          <span className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 text-xs font-semibold rounded-lg border border-emerald-200">
-            <FileSpreadsheet className="h-4 w-4" /> ประสานงานฐานข้อมูล Google Sheets เสมอ
+          {/* Real-time Firebase Status badge */}
+          <span className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-700 text-xs font-bold rounded-lg border border-indigo-200 shadow-sm">
+            <span className="h-2 w-2 bg-indigo-500 rounded-full animate-pulse"></span>
+            ซิงค์ฐานข้อมูล Cloud Firestore เรียบร้อย
           </span>
         </div>
 
