@@ -49,6 +49,17 @@
         "password": { "type": "string", "description": "Plaintext or hashed login password" }
       },
       "required": ["username", "fullName", "role", "password"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Product categories in the system",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Category unique ID" },
+        "name": { "type": "string", "description": "Category name" },
+        "folderId": { "type": "string", "description": "Optional Google Drive Folder ID" }
+      },
+      "required": ["id", "name"]
     }
   },
   "firestore": {
@@ -63,6 +74,14 @@
     "/users/{userId}": {
       "schema": "User",
       "description": "Collection of system user profiles authorized to log in"
+    },
+    "/categories/{categoryId}": {
+      "schema": "Category",
+      "description": "Collection of product categories"
+    },
+    "/settings/{settingId}": {
+      "type": "object",
+      "description": "App settings like Google Drive folder URLs"
     }
   }
 }

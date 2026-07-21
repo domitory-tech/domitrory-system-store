@@ -15,5 +15,15 @@ service cloud.firestore {
     match /users/{userId} {
       allow read, write: if true;
     }
+
+    // Categories collection rules
+    match /categories/{categoryId} {
+      allow read, write: if true;
+    }
+
+    // Settings collection rules
+    match /settings/{settingId} {
+      allow read, write: if true;
+    }
   }
 }
