@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, Package, ArrowUpRight, ArrowDownRight, RefreshCcw, FileCode, LogOut, Menu, X, Warehouse, FileText, Cloud, CloudOff, AlertCircle } from 'lucide-react';
+import { LayoutDashboard, Package, ArrowUpRight, ArrowDownRight, RefreshCcw, LogOut, Menu, X, Warehouse, FileText, AlertCircle, Database, FileSpreadsheet, Users } from 'lucide-react';
 import { User, Product, Transaction } from './types';
 import { INITIAL_PRODUCTS, INITIAL_TRANSACTIONS, INITIAL_CATEGORIES } from './data/mockData';
 import Login from './components/Login';
@@ -13,23 +13,10 @@ import Inventory from './components/Inventory';
 import Intake from './components/Intake';
 import Withdraw from './components/Withdraw';
 import Logs from './components/Logs';
-import GasDeveloper from './components/GasDeveloper';
 import UsersManagement from './components/UsersManagement';
 import Reports from './components/Reports';
-import { Users } from 'lucide-react';
-import {
-  isConfigured,
-  fetchLiveProducts,
-  fetchLiveTransactions,
-  fetchLiveUsers,
-  syncIntake,
-  syncWithdraw,
-  syncEditProduct,
-  syncDeleteProduct,
-  syncAddUser,
-  syncDeleteUser,
-  syncUpdateUser
-} from './utils/gasApi';
+import GoogleSheetsConfig from './components/GoogleSheetsConfig';
+import { initAuth, getAccessToken, pushDataToSpreadsheet } from './utils/googleSheets';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -47,6 +34,13 @@ export default function App() {
   const [selectedProductCode, setSelectedProductCode] = useState<string>('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  // Google Sheets integration state
+  const [googleEmail, setGoogleEmail] = useState<string | null>(() => localStorage.getItem('google_logged_in_email'));
+  const [spreadsheetId, setSpreadsheetId] = useState<string | null>(() => localStorage.getItem('google_spreadsheet_id'));
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncSuccessMessage, setSyncSuccessMessage] = useState<string>('');
+  const [syncError, setSyncError] = useState<string | null>(null);
+
   // ข้อมูลผู้ใช้งานระบบสโตร์
   const [users, setUsers] = useState<User[]>(() => {
     const saved = localStorage.getItem('gas_store_users');
@@ -55,11 +49,6 @@ export default function App() {
       { username: 'staff', fullName: 'เจ้าหน้าที่พัสดุหอพัก', role: 'Staff', password: 'staff1234' }
     ];
   });
-
-  // Sync state
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [syncError, setSyncError] = useState<string | null>(null);
-  const [syncSuccessMessage, setSyncSuccessMessage] = useState<string | null>(null);
 
   // Automatically persist locally
   useEffect(() => {
@@ -74,94 +63,75 @@ export default function App() {
     localStorage.setItem('gas_store_users', JSON.stringify(users));
   }, [users]);
 
-  // Sync pull function
-  const handleSyncFromGAS = async (showSuccessToast = false) => {
-    if (!isConfigured()) return;
-    setIsSyncing(true);
-    setSyncError(null);
-    try {
-      const liveProducts = await fetchLiveProducts();
-      if (liveProducts) {
-        setProducts(liveProducts);
-      }
-
-      const liveTxs = await fetchLiveTransactions();
-      if (liveTxs) {
-        setTransactions(liveTxs);
-      }
-
-      const liveUsers = await fetchLiveUsers();
-      if (liveUsers && liveUsers.length > 0) {
-        // preserve password fields if missing from api
-        setUsers(prev => {
-          return liveUsers.map(lu => {
-            const match = prev.find(p => p.username === lu.username);
-            return {
-              ...lu,
-              password: lu.password || (match ? match.password : '1234')
-            };
-          });
-        });
-      }
-
-      if (showSuccessToast) {
-        setSyncSuccessMessage('🔄 ดึงข้อมูลล่าสุดจาก Google Sheets สำเร็จ!');
-        setTimeout(() => setSyncSuccessMessage(null), 3000);
-      }
-    } catch (err: any) {
-      console.error("Sync error:", err);
-      setSyncError('ไม่สามารถเชื่อมต่อ Google Sheets ได้ กรุณาเช็ค Apps Script URL');
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  // Initial pull on mount
+  // Listen to Google Auth state
   useEffect(() => {
-    if (isConfigured()) {
-      handleSyncFromGAS();
-    }
+    const unsubscribe = initAuth(
+      (user) => {
+        setGoogleEmail(user.email);
+        setSpreadsheetId(localStorage.getItem('google_spreadsheet_id'));
+      },
+      () => {
+        setGoogleEmail(null);
+        setSpreadsheetId(null);
+      }
+    );
+    return () => unsubscribe();
   }, []);
 
-  const handleAddUser = async (newUser: User) => {
-    setUsers((prev) => [...prev, newUser]);
-    if (isConfigured()) {
+  // Sync state with Google Sheets if configured
+  const syncPushToGoogleSheets = async (
+    updatedProducts: Product[],
+    updatedTransactions: Transaction[],
+    updatedUsers: User[]
+  ) => {
+    const token = getAccessToken();
+    const id = localStorage.getItem('google_spreadsheet_id');
+    if (token && id) {
+      setIsSyncing(true);
+      setSyncError(null);
       try {
-        await syncAddUser(newUser);
-        await handleSyncFromGAS();
-      } catch (err) {
-        console.error(err);
+        await pushDataToSpreadsheet(token, id, updatedProducts, updatedTransactions, updatedUsers);
+        setSyncSuccessMessage('บันทึกข้อมูลลง Google Sheets เรียบร้อยแล้ว!');
+        setTimeout(() => setSyncSuccessMessage(''), 3000);
+      } catch (err: any) {
+        console.error('Google Sheets sync failed:', err);
+        setSyncError('ไม่สามารถซิงค์ข้อมูลลง Google Sheets: ' + (err.message || err));
+      } finally {
+        setIsSyncing(false);
       }
     }
   };
 
-  const handleDeleteUser = async (username: string) => {
-    setUsers((prev) => prev.filter((u) => u.username !== username));
-    if (isConfigured()) {
-      try {
-        await syncDeleteUser(username);
-        await handleSyncFromGAS();
-      } catch (err) {
-        console.error(err);
-      }
-    }
+  // Called when manual pull/push from GoogleSheetsConfig finishes successfully
+  const handleGoogleSyncSuccess = (pulledProducts: Product[], pulledTransactions: Transaction[], pulledUsers: User[]) => {
+    setProducts(pulledProducts);
+    setTransactions(pulledTransactions);
+    setUsers(pulledUsers);
+    
+    // Also store the updated details in state
+    setSpreadsheetId(localStorage.getItem('google_spreadsheet_id'));
+    setGoogleEmail(localStorage.getItem('google_logged_in_email'));
   };
 
-  const handleUpdateUser = async (oldUsername: string, updatedUser: User) => {
-    setUsers((prev) =>
-      prev.map((u) => (u.username === oldUsername ? updatedUser : u))
-    );
+  const handleAddUser = (newUser: User) => {
+    const nextUsers = [...users, newUser];
+    setUsers(nextUsers);
+    syncPushToGoogleSheets(products, transactions, nextUsers);
+  };
+
+  const handleDeleteUser = (username: string) => {
+    const nextUsers = users.filter((u) => u.username !== username);
+    setUsers(nextUsers);
+    syncPushToGoogleSheets(products, transactions, nextUsers);
+  };
+
+  const handleUpdateUser = (oldUsername: string, updatedUser: User) => {
+    const nextUsers = users.map((u) => (u.username === oldUsername ? updatedUser : u));
+    setUsers(nextUsers);
     if (currentUser && currentUser.username === oldUsername) {
       setCurrentUser(updatedUser);
     }
-    if (isConfigured()) {
-      try {
-        await syncUpdateUser(oldUsername, updatedUser);
-        await handleSyncFromGAS();
-      } catch (err) {
-        console.error(err);
-      }
-    }
+    syncPushToGoogleSheets(products, transactions, nextUsers);
   };
 
   // ดึงรายการประเภทหมวดหมู่ที่มีในฐานข้อมูล
@@ -190,7 +160,7 @@ export default function App() {
   };
 
   // ประมวลผลนำเข้าพัสดุ
-  const handleProcessIntake = async (data: {
+  const handleProcessIntake = (data: {
     code: string;
     name: string;
     category: string;
@@ -205,6 +175,7 @@ export default function App() {
     const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
     
     // อัปเดตพัสดุ
+    let nextProducts: Product[] = [];
     setProducts((prevProducts) => {
       const idx = prevProducts.findIndex(p => p.code === data.code);
       if (idx !== -1) {
@@ -216,6 +187,7 @@ export default function App() {
           updatedAt: timestamp,
           imageUrl: data.imageBase64 || updated[idx].imageUrl
         };
+        nextProducts = updated;
         return updated;
       } else {
         // รายการสินค้าใหม่
@@ -231,7 +203,8 @@ export default function App() {
           building: data.building,
           location: data.location
         };
-        return [newProduct, ...prevProducts];
+        nextProducts = [newProduct, ...prevProducts];
+        return nextProducts;
       }
     });
 
@@ -252,25 +225,20 @@ export default function App() {
       timestamp: timestamp
     };
 
-    setTransactions((prevTxs) => [newTx, ...prevTxs]);
+    let nextTransactions: Transaction[] = [];
+    setTransactions((prevTxs) => {
+      nextTransactions = [newTx, ...prevTxs];
+      return nextTransactions;
+    });
 
-    // ส่งเข้า Google Sheets
-    if (isConfigured()) {
-      try {
-        await syncIntake({
-          ...data,
-          operator: currentUser?.fullName || 'ผู้ดูแลระบบทั่วไป',
-          imageName: `img_${data.code}_${Date.now()}.png`
-        });
-        await handleSyncFromGAS();
-      } catch (err) {
-        console.error("GAS intake failed:", err);
-      }
-    }
+    // Run background sync push with newly calculated states
+    setTimeout(() => {
+      syncPushToGoogleSheets(nextProducts, nextTransactions, users);
+    }, 50);
   };
 
   // ประมวลผลเบิกจ่ายพัสดุ
-  const handleProcessWithdraw = async (data: {
+  const handleProcessWithdraw = (data: {
     code: string;
     quantity: number;
     recipient: string;
@@ -282,6 +250,7 @@ export default function App() {
     if (!item) return;
 
     // อัปเดตจำนวนคงเหลือพัสดุ
+    let nextProducts: Product[] = [];
     setProducts((prevProducts) => {
       const idx = prevProducts.findIndex(p => p.code === data.code);
       if (idx !== -1) {
@@ -291,8 +260,10 @@ export default function App() {
           quantity: Math.max(0, updated[idx].quantity - data.quantity),
           updatedAt: timestamp
         };
+        nextProducts = updated;
         return updated;
       }
+      nextProducts = prevProducts;
       return prevProducts;
     });
 
@@ -305,102 +276,47 @@ export default function App() {
       type: 'WITHDRAW',
       quantity: data.quantity,
       prevQuantity: item.quantity,
-      newQuantity: item.quantity - data.quantity,
+      newQuantity: Math.max(0, item.quantity - data.quantity),
       operator: data.operator || currentUser?.fullName || 'เจ้าหน้าที่พัสดุหอพัก',
       recipient: data.recipient,
       note: data.note,
       timestamp: timestamp
     };
 
-    setTransactions((prevTxs) => [newTx, ...prevTxs]);
+    let nextTransactions: Transaction[] = [];
+    setTransactions((prevTxs) => {
+      nextTransactions = [newTx, ...prevTxs];
+      return nextTransactions;
+    });
 
-    // ส่งเข้า Google Sheets
-    if (isConfigured()) {
-      try {
-        await syncWithdraw({
-          ...data,
-          operator: data.operator || currentUser?.fullName || 'เจ้าหน้าที่พัสดุหอพัก'
-        });
-        await handleSyncFromGAS();
-      } catch (err) {
-        console.error("GAS withdraw failed:", err);
-      }
-    }
+    // Run background sync push with newly calculated states
+    setTimeout(() => {
+      syncPushToGoogleSheets(nextProducts, nextTransactions, users);
+    }, 50);
   };
 
   // แก้ไขรายละเอียดพัสดุ
-  const handleEditProduct = async (updatedProduct: Product) => {
-    setProducts((prev) =>
-      prev.map((p) => (p.code === updatedProduct.code ? updatedProduct : p))
-    );
-    if (isConfigured()) {
-      try {
-        await syncEditProduct(updatedProduct);
-        await handleSyncFromGAS();
-      } catch (err) {
-        console.error("GAS edit failed:", err);
-      }
-    }
+  const handleEditProduct = (updatedProduct: Product) => {
+    const nextProducts = products.map((p) => (p.code === updatedProduct.code ? updatedProduct : p));
+    setProducts(nextProducts);
+    syncPushToGoogleSheets(nextProducts, transactions, users);
   };
 
   // ลบพัสดุออกจากระบบ
-  const handleDeleteProduct = async (code: string) => {
-    setProducts((prev) => prev.filter((p) => p.code !== code));
-    if (isConfigured()) {
-      try {
-        await syncDeleteProduct(code);
-        await handleSyncFromGAS();
-      } catch (err) {
-        console.error("GAS delete failed:", err);
-      }
-    }
+  const handleDeleteProduct = (code: string) => {
+    const nextProducts = products.filter((p) => p.code !== code);
+    setProducts(nextProducts);
+    syncPushToGoogleSheets(nextProducts, transactions, users);
   };
 
-  // ล้างข้อมูลจำลองทั้งหมด
+  // ล้างข้อมูลทั้งหมด
   const handleResetLocalData = () => {
-    setProducts([]);
-    setTransactions([]);
-    localStorage.setItem('gas_store_products', JSON.stringify([]));
-    localStorage.setItem('gas_store_transactions', JSON.stringify([]));
-  };
-
-  // อัปโหลดข้อมูลจำลองในเครื่องขึ้นสู่ Google Sheets
-  const handleUploadLocalDataToGAS = async (): Promise<{ success: boolean; message: string }> => {
-    if (!isConfigured()) {
-      return { success: false, message: 'กรุณากรอกและบันทึก URL ของ Web App ก่อนทำการอัปโหลด' };
-    }
-
-    if (products.length === 0) {
-      return { success: false, message: 'ไม่มีข้อมูลพัสดุจำลองภายในเบราว์เซอร์ที่จะทำการอัปโหลด กรุณาตรวจสอบหรือเพิ่มพัสดุก่อนส่ง' };
-    }
-    
-    let uploadedCount = 0;
-    try {
-      for (const prod of products) {
-        // อัปเดตพัสดุลงในชีตผ่าน editProduct หรือเพิ่มพัสดุใหม่เข้าไป
-        const result = await syncEditProduct(prod) as any;
-        if (result && result.success) {
-          uploadedCount++;
-        } else {
-          // หากแก้ไม่สำเร็จ อาจเพราะสินค้ายังไม่มีในชีต ให้พยายามส่ง processIntake เข้าไปเพื่อสร้างชีตใหม่
-          await syncIntake({
-            code: prod.code,
-            name: prod.name,
-            category: prod.category,
-            quantity: prod.quantity,
-            minStock: prod.minStock,
-            unit: prod.unit,
-            imageUrl: prod.imageUrl || '',
-            operator: currentUser?.fullName || 'System',
-            note: 'นำเข้าระบบตอนย้ายข้อมูล'
-          });
-          uploadedCount++;
-        }
-      }
-      await handleSyncFromGAS();
-      return { success: true, message: `อัปโหลดพัสดุขึ้น Google Sheets สำเร็จทั้งหมด ${uploadedCount} รายการ!` };
-    } catch (err: any) {
-      return { success: false, message: err.message || 'เกิดข้อผิดพลาดขณะส่งข้อมูลขึ้น Google Sheets' };
+    if (window.confirm('⚠️ คุณแน่ใจหรือไม่ว่าต้องการล้างข้อมูลพัสดุและรายการทั้งหมดออกจากระบบ? การกระทำนี้ไม่สามารถย้อนกลับได้')) {
+      setProducts([]);
+      setTransactions([]);
+      localStorage.setItem('gas_store_products', JSON.stringify([]));
+      localStorage.setItem('gas_store_transactions', JSON.stringify([]));
+      syncPushToGoogleSheets([], [], users);
     }
   };
 
@@ -416,8 +332,8 @@ export default function App() {
     { id: 'logs', label: 'ประวัติการเคลื่อนไหว', icon: RefreshCcw },
     { id: 'reports', label: 'รายงาน พิมพ์ (Export)', icon: FileText },
     ...(currentUser.role === 'Admin' ? [
-      { id: 'users', label: 'จัดการข้อมูลผู้ใช้', icon: Users },
-      { id: 'developer', label: '🔋 ติดตั้งฐานข้อมูล (GAS)', icon: FileCode }
+      { id: 'google_sheets', label: '📊 เชื่อมต่อ Google Sheets', icon: FileSpreadsheet },
+      { id: 'users', label: 'จัดการข้อมูลผู้ใช้', icon: Users }
     ] : []),
   ];
 
@@ -452,8 +368,24 @@ export default function App() {
           </div>
         </div>
 
+        {/* Google Sheets Connection Status Badge */}
+        <div className="mx-4 mt-2 px-3.5 py-2 bg-white border border-slate-200/60 rounded-xl flex items-center justify-between text-[10px]">
+          <span className="text-slate-400 font-medium">คลังข้อมูลหลัก:</span>
+          {googleEmail ? (
+            <div className="flex items-center gap-1.5 text-emerald-600 font-bold" title={googleEmail}>
+              <span className="h-1.5 w-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
+              Google Sheets
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 text-slate-400 font-semibold">
+              <span className="h-1.5 w-1.5 bg-slate-300 rounded-full"></span>
+              เครื่องเบราว์เซอร์
+            </div>
+          )}
+        </div>
+
         {/* Sidebar Menu Links */}
-        <nav className="flex-1 px-4 space-y-1">
+        <nav className="flex-1 px-4 mt-4 space-y-1">
           {navItems.map((item) => {
             const Icon = item.icon;
             const active = activeTab === item.id;
@@ -490,21 +422,11 @@ export default function App() {
           <div className="flex flex-col">
             <span className="font-bold text-slate-900 text-sm leading-none">คลังสโตร์หอพัก</span>
             <span className="text-[8px] text-slate-500 mt-0.5">
-              {isConfigured() ? '🟢 Google Sheets API' : '⚪ Local Simulation Mode'}
+              {googleEmail ? '🟢 ซิงค์ผ่าน Google Sheets' : '💾 บันทึกในเครื่อง (Local)'}
             </span>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {isConfigured() && (
-            <button
-              onClick={() => handleSyncFromGAS(true)}
-              disabled={isSyncing}
-              className="p-1.5 bg-white border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-50 cursor-pointer text-xs"
-              title="ดึงข้อมูลล่าสุด"
-            >
-              <RefreshCcw className={`h-3.5 w-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-            </button>
-          )}
           <button
             id="btn-toggle-mobile-menu"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -551,23 +473,28 @@ export default function App() {
 
       {/* CORE CONTENT PANEL */}
       <main id="main-content-panel" className="flex-1 overflow-y-auto p-4 md:p-8 flex flex-col">
-        {/* Dynamic Sync Notification Toast */}
-        {syncSuccessMessage && (
-          <div className="mb-4 p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center gap-3 text-xs text-emerald-800 font-medium shadow-sm">
-            <span className="p-1 bg-emerald-500 rounded-lg text-white text-[10px] font-bold">✓</span>
-            <div>{syncSuccessMessage}</div>
-          </div>
-        )}
-        {syncError && (
-          <div className="mb-4 p-3.5 bg-rose-50 border border-rose-200 rounded-2xl flex items-center gap-3 text-xs text-rose-800 font-medium shadow-sm">
-            <AlertCircle className="h-4 w-4 text-rose-500 shrink-0" />
-            <div>{syncError}</div>
-          </div>
-        )}
-        {isSyncing && !syncSuccessMessage && (
-          <div className="mb-4 p-3.5 bg-indigo-50/50 border border-indigo-100 rounded-2xl flex items-center gap-3 text-xs text-indigo-700 font-medium shadow-sm">
-            <RefreshCcw className="h-4 w-4 text-indigo-500 animate-spin shrink-0" />
-            <div>กำลังอัปเดตและประสานข้อมูลกับ Google Sheets...</div>
+
+        {/* Global Google Sheets Background Sync Notifications */}
+        {(isSyncing || syncSuccessMessage || syncError) && (
+          <div className="mb-4 transition-all duration-300">
+            {isSyncing && (
+              <div className="flex items-center gap-2 px-4 py-2 bg-indigo-50 border border-indigo-100 rounded-xl text-xs text-indigo-700 font-semibold animate-pulse shadow-sm w-fit">
+                <RefreshCcw className="h-3.5 w-3.5 text-indigo-500 animate-spin" />
+                <span>กำลังบันทึกและซิงค์ข้อมูลลง Google Sheets...</span>
+              </div>
+            )}
+            {syncSuccessMessage && !isSyncing && (
+              <div className="flex items-center gap-2 px-4 py-2 bg-emerald-50 border border-emerald-100 rounded-xl text-xs text-emerald-700 font-bold shadow-sm w-fit animate-fade-in">
+                <span className="h-2 w-2 bg-emerald-500 rounded-full"></span>
+                <span>{syncSuccessMessage}</span>
+              </div>
+            )}
+            {syncError && !isSyncing && (
+              <div className="flex items-center gap-2 px-4 py-2 bg-rose-50 border border-rose-100 rounded-xl text-xs text-rose-700 font-bold shadow-sm w-fit">
+                <AlertCircle className="h-4 w-4 text-rose-500" />
+                <span>{syncError}</span>
+              </div>
+            )}
           </div>
         )}
 
@@ -633,6 +560,16 @@ export default function App() {
             />
           )}
 
+          {activeTab === 'google_sheets' && currentUser.role === 'Admin' && (
+            <GoogleSheetsConfig
+              products={products}
+              transactions={transactions}
+              users={users}
+              onSyncSuccess={handleGoogleSyncSuccess}
+              currentUser={currentUser}
+            />
+          )}
+
           {activeTab === 'users' && currentUser.role === 'Admin' && (
             <UsersManagement
               users={users}
@@ -640,14 +577,6 @@ export default function App() {
               onDeleteUser={handleDeleteUser}
               onUpdateUser={handleUpdateUser}
               currentUser={currentUser}
-            />
-          )}
-
-          {activeTab === 'developer' && currentUser.role === 'Admin' && (
-            <GasDeveloper 
-              onSync={() => handleSyncFromGAS(true)} 
-              onResetData={handleResetLocalData}
-              onUploadLocalData={handleUploadLocalDataToGAS}
             />
           )}
         </div>
@@ -662,7 +591,7 @@ export default function App() {
               💻 ผู้ออกแบบระบบ โดย: <a href="mailto:eakpon@gmail.com" className="text-indigo-600 hover:underline">eakpon@gmail.com</a>
             </span>
             <span className="font-mono text-[9px] text-slate-400">
-              code: AI studio Run : <a href="https://github.com/" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline inline">( https://github.com/ )</a> | Google Dirver | Google Sheets
+              code: AI studio Run : <a href="https://github.com/" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline inline">( https://github.com/ )</a>
             </span>
           </div>
         </footer>

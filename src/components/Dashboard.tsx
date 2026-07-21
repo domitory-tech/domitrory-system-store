@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { Package, Inbox, AlertTriangle, XCircle, ArrowUpRight, ArrowDownRight, RefreshCcw, Bell, Database, Sparkles, BookOpen, X } from 'lucide-react';
+import { Package, Inbox, AlertTriangle, XCircle, ArrowUpRight, ArrowDownRight, RefreshCcw, Bell, Database, Sparkles, BookOpen, X, FileSpreadsheet } from 'lucide-react';
 import { Product, Transaction, User } from '../types';
 
 interface DashboardProps {
@@ -56,37 +56,30 @@ export default function Dashboard({ products, transactions, onNavigateToTab, onS
       </div>
 
       {/* Database Connection / Setup Guidance Banner */}
-      {showSetupBanner && currentUser.role === 'Admin' && (
-        <div id="database-setup-alert" className="relative overflow-hidden bg-gradient-to-r from-indigo-900 via-indigo-950 to-slate-900 text-white p-5 md:p-6 rounded-2xl shadow-md border border-indigo-950 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div className="absolute top-0 right-0 left-0 bottom-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-indigo-500/20 via-transparent to-transparent"></div>
+      {!localStorage.getItem('google_spreadsheet_id') && currentUser.role === 'Admin' && (
+        <div id="database-setup-alert" className="relative overflow-hidden bg-gradient-to-r from-emerald-900 via-teal-950 to-slate-900 text-white p-5 md:p-6 rounded-2xl shadow-md border border-emerald-950 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div className="absolute top-0 right-0 left-0 bottom-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-emerald-500/20 via-transparent to-transparent"></div>
           <div className="relative z-10 flex items-start gap-3.5 max-w-2xl">
-            <div className="p-2.5 bg-indigo-500/20 text-indigo-300 rounded-xl border border-indigo-500/10 shrink-0">
+            <div className="p-2.5 bg-emerald-500/20 text-emerald-300 rounded-xl border border-emerald-500/10 shrink-0">
               <Database className="h-5.5 w-5.5 animate-pulse" />
             </div>
             <div className="space-y-1">
-              <h4 className="font-bold text-sm md:text-base flex items-center gap-1.5 text-indigo-100">
-                <Sparkles className="h-4 w-4 text-indigo-300" />
-                ตัวช่วยเชื่อมต่อและจัดเตรียมฐานข้อมูล Google Sheets อย่างง่าย
+              <h4 className="font-bold text-sm md:text-base flex items-center gap-1.5 text-emerald-100">
+                <Sparkles className="h-4 w-4 text-emerald-300" />
+                ปกป้องพัสดุของคุณด้วย Google Sheets สำรองข้อมูลอัตโนมัติ!
               </h4>
-              <p className="text-xs text-indigo-200 leading-relaxed font-light">
-                หากท่านยังไม่ได้ทำการติดตั้งฐานข้อมูลลง Google Sheets หรือต้องการดูวิธีการสั่งรหัส Google Apps Script (GAS) เพื่อติดตั้งสร้างตารางฐานข้อมูลอัตโนมัติใน 3 วินาที สามารถกดที่นี่ได้ทันที
+              <p className="text-xs text-emerald-200 leading-relaxed font-light">
+                เชื่อมต่อบัญชี Google ของคุณเพื่อเปิดใช้งานการบันทึกข้อมูลเรียลไทม์ลงใน Google Sheets โดยตรง ปลอดภัย ถาวร และหมดกังวลเรื่องข้อมูลสูญหายจากการล้างแคชเบราว์เซอร์
               </p>
             </div>
           </div>
-          <div className="relative z-10 flex items-center gap-2 w-full md:w-auto">
+          <div className="relative z-10 flex items-center gap-2 w-full md:w-auto shrink-0">
             <button
-              onClick={() => onNavigateToTab('developer')}
-              className="w-full md:w-auto flex items-center justify-center gap-1.5 px-4.5 py-2 bg-white hover:bg-slate-100 text-indigo-950 font-bold rounded-xl text-xs transition-all active:scale-95 cursor-pointer shadow"
+              onClick={() => onNavigateToTab('google_sheets')}
+              className="w-full md:w-auto flex items-center justify-center gap-1.5 px-4.5 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl text-xs transition-all active:scale-95 cursor-pointer shadow-md"
             >
-              <BookOpen className="h-4 w-4" />
-              เปิดคู่มือและคัดลอกโค้ด
-            </button>
-            <button
-              onClick={() => setShowSetupBanner(false)}
-              className="p-2 hover:bg-white/10 rounded-xl transition-colors cursor-pointer text-indigo-300 hover:text-white"
-              title="ปิดการแจ้งเตือน"
-            >
-              <X className="h-4.5 w-4.5" />
+              <FileSpreadsheet className="h-4 w-4" />
+              เชื่อมต่อ Google Sheets เลย
             </button>
           </div>
         </div>
