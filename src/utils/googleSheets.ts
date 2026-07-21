@@ -3,72 +3,125 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { Product, Transaction, User } from '../types';
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-
-// Configure Google Auth Provider with Scopes
-export const provider = new GoogleAuthProvider();
-provider.addScope('https://www.googleapis.com/auth/spreadsheets');
-provider.addScope('https://www.googleapis.com/auth/drive.file');
 
 let cachedAccessToken: string | null = null;
 let isSigningIn = false;
 
+let authSuccessCallback: ((user: any, token: string) => void) | null = null;
+let authFailureCallback: (() => void) | null = null;
+
+// Dynamically load the Google Identity Services SDK
+export const loadGis = (): Promise<void> => {
+  return new Promise((resolve) => {
+    if ((window as any).google?.accounts?.oauth2) {
+      resolve();
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
+      resolve();
+    };
+    document.head.appendChild(script);
+  });
+};
+
 // Initialize auth state listener
 export const initAuth = (
-  onAuthSuccess?: (user: FirebaseUser, token: string) => void,
+  onAuthSuccess?: (user: any, token: string) => void,
   onAuthFailure?: () => void
 ) => {
-  return onAuthStateChanged(auth, async (user) => {
-    if (user) {
-      // If we have user but no token (e.g. on refresh), we can trigger signInWithPopup or ask user to click
-      if (cachedAccessToken) {
-        if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
-      } else {
-        // Clear and show login
-        if (onAuthFailure) onAuthFailure();
-      }
-    } else {
-      cachedAccessToken = null;
-      if (onAuthFailure) onAuthFailure();
+  if (onAuthSuccess) authSuccessCallback = onAuthSuccess;
+  if (onAuthFailure) authFailureCallback = onAuthFailure;
+
+  if (cachedAccessToken) {
+    const email = localStorage.getItem('google_logged_in_email') || 'Google Account';
+    if (onAuthSuccess) onAuthSuccess({ email }, cachedAccessToken);
+  } else {
+    if (onAuthFailure) onAuthFailure();
+  }
+
+  // Return a dummy unsubscribe function
+  return () => {
+    authSuccessCallback = null;
+    authFailureCallback = null;
+  };
+};
+
+// Sign in with Google Popup using Google Identity Services (GIS)
+export const googleSignIn = async (): Promise<{ user: { email: string }; accessToken: string } | null> => {
+  await loadGis();
+
+  return new Promise((resolve, reject) => {
+    try {
+      isSigningIn = true;
+      const client = (window as any).google.accounts.oauth2.initTokenClient({
+        client_id: firebaseConfig.oAuthClientId,
+        scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email',
+        callback: async (tokenResponse: any) => {
+          if (tokenResponse.error) {
+            isSigningIn = false;
+            reject(new Error(tokenResponse.error_description || tokenResponse.error));
+            return;
+          }
+
+          const accessToken = tokenResponse.access_token;
+          cachedAccessToken = accessToken;
+
+          try {
+            // Retrieve user email via Google userinfo API
+            const profileRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+              headers: { Authorization: `Bearer ${accessToken}` }
+            });
+            let email = 'Google Account';
+            if (profileRes.ok) {
+              const profile = await profileRes.json();
+              email = profile.email || 'Google Account';
+            }
+
+            localStorage.setItem('google_logged_in_email', email);
+
+            const userObj = { email };
+            if (authSuccessCallback) {
+              authSuccessCallback(userObj, accessToken);
+            }
+
+            resolve({ user: userObj, accessToken });
+          } catch (err) {
+            console.error('Failed to retrieve user info:', err);
+            const userObj = { email: 'Connected Account' };
+            localStorage.setItem('google_logged_in_email', userObj.email);
+            if (authSuccessCallback) {
+              authSuccessCallback(userObj, accessToken);
+            }
+            resolve({ user: userObj, accessToken });
+          } finally {
+            isSigningIn = false;
+          }
+        },
+      });
+
+      client.requestAccessToken({ prompt: 'consent' });
+    } catch (err) {
+      isSigningIn = false;
+      reject(err);
     }
   });
 };
 
-// Sign in with Google Popup
-export const googleSignIn = async (): Promise<{ user: FirebaseUser; accessToken: string } | null> => {
-  try {
-    isSigningIn = true;
-    const result = await signInWithPopup(auth, provider);
-    const credential = GoogleAuthProvider.credentialFromResult(result);
-    if (!credential?.accessToken) {
-      throw new Error('ไม่พบ Access Token จากบัญชี Google');
-    }
-    cachedAccessToken = credential.accessToken;
-    // Save to localStorage for convenience (only non-sensitive sign-in state, NOT token)
-    localStorage.setItem('google_logged_in_email', result.user.email || '');
-    return { user: result.user, accessToken: cachedAccessToken };
-  } catch (error: any) {
-    console.error('Google sign in error:', error);
-    throw error;
-  } finally {
-    isSigningIn = false;
-  }
-};
-
 // Sign out
 export const googleSignOut = async () => {
-  await auth.signOut();
   cachedAccessToken = null;
   localStorage.removeItem('google_logged_in_email');
   localStorage.removeItem('google_spreadsheet_id');
   localStorage.removeItem('google_spreadsheet_url');
+  if (authFailureCallback) {
+    authFailureCallback();
+  }
 };
 
 export const getAccessToken = () => cachedAccessToken;
