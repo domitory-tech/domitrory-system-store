@@ -4,9 +4,9 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, Package, ArrowUpRight, ArrowDownRight, RefreshCcw, LogOut, Menu, X, Warehouse, FileText, AlertCircle, Database, FileSpreadsheet, Users } from 'lucide-react';
+import { LayoutDashboard, Package, ArrowUpRight, ArrowDownRight, RefreshCcw, LogOut, Menu, X, Warehouse, FileText, AlertCircle, Database, Users } from 'lucide-react';
 import { User, Product, Transaction } from './types';
-import { INITIAL_PRODUCTS, INITIAL_TRANSACTIONS, INITIAL_CATEGORIES } from './data/mockData';
+import { INITIAL_CATEGORIES } from './data/mockData';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import Inventory from './components/Inventory';
@@ -15,123 +15,109 @@ import Withdraw from './components/Withdraw';
 import Logs from './components/Logs';
 import UsersManagement from './components/UsersManagement';
 import Reports from './components/Reports';
-import GoogleSheetsConfig from './components/GoogleSheetsConfig';
-import { initAuth, getAccessToken, pushDataToSpreadsheet } from './utils/googleSheets';
+import FirebaseConfig from './components/FirebaseConfig';
+import {
+  initFirebaseConnection,
+  seedInitialData,
+  saveProduct,
+  deleteProductFromDb,
+  saveTransaction,
+  saveUser,
+  deleteUserFromDb,
+  db
+} from './utils/firebase';
+import { doc, deleteDoc } from 'firebase/firestore';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   
-  // Local persistence fallback
-  const [products, setProducts] = useState<Product[]>(() => {
-    const saved = localStorage.getItem('gas_store_products');
-    return saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
-  });
-  const [transactions, setTransactions] = useState<Transaction[]>(() => {
-    const saved = localStorage.getItem('gas_store_transactions');
-    return saved ? JSON.parse(saved) : INITIAL_TRANSACTIONS;
-  });
+  // Firebase database states
+  const [products, setProducts] = useState<Product[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [selectedProductCode, setSelectedProductCode] = useState<string>('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Google Sheets integration state
-  const [googleEmail, setGoogleEmail] = useState<string | null>(() => localStorage.getItem('google_logged_in_email'));
-  const [spreadsheetId, setSpreadsheetId] = useState<string | null>(() => localStorage.getItem('google_spreadsheet_id'));
+  const [isLoadingDb, setIsLoadingDb] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncSuccessMessage, setSyncSuccessMessage] = useState<string>('');
   const [syncError, setSyncError] = useState<string | null>(null);
 
   // ข้อมูลผู้ใช้งานระบบสโตร์
-  const [users, setUsers] = useState<User[]>(() => {
-    const saved = localStorage.getItem('gas_store_users');
-    return saved ? JSON.parse(saved) : [
-      { username: 'admin', fullName: 'ผู้ดูแลระบบทั่วไป', role: 'Admin', password: 'admin1234' },
-      { username: 'staff', fullName: 'เจ้าหน้าที่พัสดุหอพัก', role: 'Staff', password: 'staff1234' }
-    ];
-  });
+  const [users, setUsers] = useState<User[]>([]);
 
-  // Automatically persist locally
+  // Initialize and load from Firebase
   useEffect(() => {
-    localStorage.setItem('gas_store_products', JSON.stringify(products));
-  }, [products]);
-
-  useEffect(() => {
-    localStorage.setItem('gas_store_transactions', JSON.stringify(transactions));
-  }, [transactions]);
-
-  useEffect(() => {
-    localStorage.setItem('gas_store_users', JSON.stringify(users));
-  }, [users]);
-
-  // Listen to Google Auth state
-  useEffect(() => {
-    const unsubscribe = initAuth(
-      (user) => {
-        setGoogleEmail(user.email);
-        setSpreadsheetId(localStorage.getItem('google_spreadsheet_id'));
-      },
-      () => {
-        setGoogleEmail(null);
-        setSpreadsheetId(null);
+    const loadFirebaseData = async () => {
+      setIsLoadingDb(true);
+      try {
+        await initFirebaseConnection();
+        const data = await seedInitialData();
+        setProducts(data.products);
+        setTransactions(data.transactions);
+        setUsers(data.users);
+      } catch (err: any) {
+        console.error('Failed to load Firebase data:', err);
+        setSyncError('ไม่สามารถดึงข้อมูลจาก Cloud Firestore ได้: ' + err.message);
+      } finally {
+        setIsLoadingDb(false);
       }
-    );
-    return () => unsubscribe();
+    };
+    loadFirebaseData();
   }, []);
 
-  // Sync state with Google Sheets if configured
-  const syncPushToGoogleSheets = async (
-    updatedProducts: Product[],
-    updatedTransactions: Transaction[],
-    updatedUsers: User[]
-  ) => {
-    const token = getAccessToken();
-    const id = localStorage.getItem('google_spreadsheet_id');
-    if (token && id) {
-      setIsSyncing(true);
-      setSyncError(null);
-      try {
-        await pushDataToSpreadsheet(token, id, updatedProducts, updatedTransactions, updatedUsers);
-        setSyncSuccessMessage('บันทึกข้อมูลลง Google Sheets เรียบร้อยแล้ว!');
-        setTimeout(() => setSyncSuccessMessage(''), 3000);
-      } catch (err: any) {
-        console.error('Google Sheets sync failed:', err);
-        setSyncError('ไม่สามารถซิงค์ข้อมูลลง Google Sheets: ' + (err.message || err));
-      } finally {
-        setIsSyncing(false);
-      }
+  const handleAddUser = async (newUser: User) => {
+    const nextUsers = [...users, newUser];
+    setUsers(nextUsers);
+    setIsSyncing(true);
+    setSyncError(null);
+    try {
+      await saveUser(newUser);
+      setSyncSuccessMessage('บันทึกข้อมูลผู้ใช้ใหม่ลง Firebase สำเร็จ!');
+      setTimeout(() => setSyncSuccessMessage(''), 3000);
+    } catch (err: any) {
+      setSyncError('บันทึกข้อมูลล้มเหลว: ' + err.message);
+    } finally {
+      setIsSyncing(false);
     }
   };
 
-  // Called when manual pull/push from GoogleSheetsConfig finishes successfully
-  const handleGoogleSyncSuccess = (pulledProducts: Product[], pulledTransactions: Transaction[], pulledUsers: User[]) => {
-    setProducts(pulledProducts);
-    setTransactions(pulledTransactions);
-    setUsers(pulledUsers);
-    
-    // Also store the updated details in state
-    setSpreadsheetId(localStorage.getItem('google_spreadsheet_id'));
-    setGoogleEmail(localStorage.getItem('google_logged_in_email'));
-  };
-
-  const handleAddUser = (newUser: User) => {
-    const nextUsers = [...users, newUser];
-    setUsers(nextUsers);
-    syncPushToGoogleSheets(products, transactions, nextUsers);
-  };
-
-  const handleDeleteUser = (username: string) => {
+  const handleDeleteUser = async (username: string) => {
     const nextUsers = users.filter((u) => u.username !== username);
     setUsers(nextUsers);
-    syncPushToGoogleSheets(products, transactions, nextUsers);
+    setIsSyncing(true);
+    setSyncError(null);
+    try {
+      await deleteUserFromDb(username);
+      setSyncSuccessMessage('ลบข้อมูลผู้ใช้จาก Firebase สำเร็จ!');
+      setTimeout(() => setSyncSuccessMessage(''), 3000);
+    } catch (err: any) {
+      setSyncError('ลบข้อมูลล้มเหลว: ' + err.message);
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
-  const handleUpdateUser = (oldUsername: string, updatedUser: User) => {
+  const handleUpdateUser = async (oldUsername: string, updatedUser: User) => {
     const nextUsers = users.map((u) => (u.username === oldUsername ? updatedUser : u));
     setUsers(nextUsers);
     if (currentUser && currentUser.username === oldUsername) {
       setCurrentUser(updatedUser);
     }
-    syncPushToGoogleSheets(products, transactions, nextUsers);
+    setIsSyncing(true);
+    setSyncError(null);
+    try {
+      if (oldUsername !== updatedUser.username) {
+        await deleteUserFromDb(oldUsername);
+      }
+      await saveUser(updatedUser);
+      setSyncSuccessMessage('อัปเดตข้อมูลผู้ใช้ใน Firebase สำเร็จ!');
+      setTimeout(() => setSyncSuccessMessage(''), 3000);
+    } catch (err: any) {
+      setSyncError('บันทึกข้อมูลล้มเหลว: ' + err.message);
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   // ดึงรายการประเภทหมวดหมู่ที่มีในฐานข้อมูล
@@ -160,7 +146,7 @@ export default function App() {
   };
 
   // ประมวลผลนำเข้าพัสดุ
-  const handleProcessIntake = (data: {
+  const handleProcessIntake = async (data: {
     code: string;
     name: string;
     category: string;
@@ -175,42 +161,33 @@ export default function App() {
     const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
     
     // อัปเดตพัสดุ
-    let nextProducts: Product[] = [];
-    setProducts((prevProducts) => {
-      const idx = prevProducts.findIndex(p => p.code === data.code);
-      if (idx !== -1) {
-        // มีสินค้าอยู่เดิม
-        const updated = [...prevProducts];
-        updated[idx] = {
-          ...updated[idx],
-          quantity: updated[idx].quantity + data.quantity,
-          updatedAt: timestamp,
-          imageUrl: data.imageBase64 || updated[idx].imageUrl
-        };
-        nextProducts = updated;
-        return updated;
-      } else {
-        // รายการสินค้าใหม่
-        const newProduct: Product = {
-          code: data.code,
-          name: data.name,
-          category: data.category,
-          quantity: data.quantity,
-          minStock: data.minStock,
-          unit: data.unit,
-          imageUrl: data.imageBase64 || undefined,
-          updatedAt: timestamp,
-          building: data.building,
-          location: data.location
-        };
-        nextProducts = [newProduct, ...prevProducts];
-        return nextProducts;
-      }
-    });
-
-    // บันทึก Log ประวัติ
+    let updatedProduct: Product;
     const prevItem = products.find(p => p.code === data.code);
     const prevQty = prevItem ? prevItem.quantity : 0;
+    const newQty = prevQty + data.quantity;
+    
+    if (prevItem) {
+      updatedProduct = {
+        ...prevItem,
+        quantity: newQty,
+        updatedAt: timestamp,
+        imageUrl: data.imageBase64 || prevItem.imageUrl
+      };
+    } else {
+      updatedProduct = {
+        code: data.code,
+        name: data.name,
+        category: data.category,
+        quantity: data.quantity,
+        minStock: data.minStock,
+        unit: data.unit,
+        imageUrl: data.imageBase64 || undefined,
+        updatedAt: timestamp,
+        building: data.building,
+        location: data.location
+      };
+    }
+
     const newTx: Transaction = {
       id: `TX-IN-${Date.now()}`,
       code: data.code,
@@ -219,26 +196,41 @@ export default function App() {
       type: 'INTAKE',
       quantity: data.quantity,
       prevQuantity: prevQty,
-      newQuantity: prevQty + data.quantity,
+      newQuantity: newQty,
       operator: currentUser?.fullName || 'ผู้ดูแลระบบทั่วไป',
       note: data.note,
       timestamp: timestamp
     };
 
-    let nextTransactions: Transaction[] = [];
-    setTransactions((prevTxs) => {
-      nextTransactions = [newTx, ...prevTxs];
-      return nextTransactions;
+    setProducts((prev) => {
+      const idx = prev.findIndex(p => p.code === data.code);
+      if (idx !== -1) {
+        const updated = [...prev];
+        updated[idx] = updatedProduct;
+        return updated;
+      } else {
+        return [updatedProduct, ...prev];
+      }
     });
 
-    // Run background sync push with newly calculated states
-    setTimeout(() => {
-      syncPushToGoogleSheets(nextProducts, nextTransactions, users);
-    }, 50);
+    setTransactions((prev) => [newTx, ...prev]);
+
+    setIsSyncing(true);
+    setSyncError(null);
+    try {
+      await saveProduct(updatedProduct);
+      await saveTransaction(newTx);
+      setSyncSuccessMessage('บันทึกนำเข้าพัสดุลง Firebase สำเร็จ!');
+      setTimeout(() => setSyncSuccessMessage(''), 3000);
+    } catch (err: any) {
+      setSyncError('เกิดข้อผิดพลาดในการบันทึกข้อมูลลง Firebase: ' + err.message);
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   // ประมวลผลเบิกจ่ายพัสดุ
-  const handleProcessWithdraw = (data: {
+  const handleProcessWithdraw = async (data: {
     code: string;
     quantity: number;
     recipient: string;
@@ -249,25 +241,13 @@ export default function App() {
     const item = products.find(p => p.code === data.code);
     if (!item) return;
 
-    // อัปเดตจำนวนคงเหลือพัสดุ
-    let nextProducts: Product[] = [];
-    setProducts((prevProducts) => {
-      const idx = prevProducts.findIndex(p => p.code === data.code);
-      if (idx !== -1) {
-        const updated = [...prevProducts];
-        updated[idx] = {
-          ...updated[idx],
-          quantity: Math.max(0, updated[idx].quantity - data.quantity),
-          updatedAt: timestamp
-        };
-        nextProducts = updated;
-        return updated;
-      }
-      nextProducts = prevProducts;
-      return prevProducts;
-    });
+    const newQty = Math.max(0, item.quantity - data.quantity);
+    const updatedProduct = {
+      ...item,
+      quantity: newQty,
+      updatedAt: timestamp
+    };
 
-    // บันทึกประวัติเบิกจ่าย
     const newTx: Transaction = {
       id: `TX-OUT-${Date.now()}`,
       code: data.code,
@@ -276,52 +256,101 @@ export default function App() {
       type: 'WITHDRAW',
       quantity: data.quantity,
       prevQuantity: item.quantity,
-      newQuantity: Math.max(0, item.quantity - data.quantity),
+      newQuantity: newQty,
       operator: data.operator || currentUser?.fullName || 'เจ้าหน้าที่พัสดุหอพัก',
       recipient: data.recipient,
       note: data.note,
       timestamp: timestamp
     };
 
-    let nextTransactions: Transaction[] = [];
-    setTransactions((prevTxs) => {
-      nextTransactions = [newTx, ...prevTxs];
-      return nextTransactions;
-    });
+    setProducts((prev) => prev.map((p) => (p.code === data.code ? updatedProduct : p)));
+    setTransactions((prev) => [newTx, ...prev]);
 
-    // Run background sync push with newly calculated states
-    setTimeout(() => {
-      syncPushToGoogleSheets(nextProducts, nextTransactions, users);
-    }, 50);
+    setIsSyncing(true);
+    setSyncError(null);
+    try {
+      await saveProduct(updatedProduct);
+      await saveTransaction(newTx);
+      setSyncSuccessMessage('บันทึกเบิกจ่ายพัสดุลง Firebase สำเร็จ!');
+      setTimeout(() => setSyncSuccessMessage(''), 3000);
+    } catch (err: any) {
+      setSyncError('เกิดข้อผิดพลาดในการบันทึกข้อมูลลง Firebase: ' + err.message);
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   // แก้ไขรายละเอียดพัสดุ
-  const handleEditProduct = (updatedProduct: Product) => {
-    const nextProducts = products.map((p) => (p.code === updatedProduct.code ? updatedProduct : p));
-    setProducts(nextProducts);
-    syncPushToGoogleSheets(nextProducts, transactions, users);
+  const handleEditProduct = async (updatedProduct: Product) => {
+    setProducts((prev) => prev.map((p) => (p.code === updatedProduct.code ? updatedProduct : p)));
+    setIsSyncing(true);
+    setSyncError(null);
+    try {
+      await saveProduct(updatedProduct);
+      setSyncSuccessMessage('แก้ไขข้อมูลพัสดุใน Firebase สำเร็จ!');
+      setTimeout(() => setSyncSuccessMessage(''), 3000);
+    } catch (err: any) {
+      setSyncError('เกิดข้อผิดพลาดในการแก้ไขข้อมูล: ' + err.message);
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   // ลบพัสดุออกจากระบบ
-  const handleDeleteProduct = (code: string) => {
-    const nextProducts = products.filter((p) => p.code !== code);
-    setProducts(nextProducts);
-    syncPushToGoogleSheets(nextProducts, transactions, users);
+  const handleDeleteProduct = async (code: string) => {
+    setProducts((prev) => prev.filter((p) => p.code !== code));
+    setIsSyncing(true);
+    setSyncError(null);
+    try {
+      await deleteProductFromDb(code);
+      setSyncSuccessMessage('ลบข้อมูลพัสดุใน Firebase สำเร็จ!');
+      setTimeout(() => setSyncSuccessMessage(''), 3000);
+    } catch (err: any) {
+      setSyncError('เกิดข้อผิดพลาดในการลบข้อมูล: ' + err.message);
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   // ล้างข้อมูลทั้งหมด
-  const handleResetLocalData = () => {
-    if (window.confirm('⚠️ คุณแน่ใจหรือไม่ว่าต้องการล้างข้อมูลพัสดุและรายการทั้งหมดออกจากระบบ? การกระทำนี้ไม่สามารถย้อนกลับได้')) {
-      setProducts([]);
-      setTransactions([]);
-      localStorage.setItem('gas_store_products', JSON.stringify([]));
-      localStorage.setItem('gas_store_transactions', JSON.stringify([]));
-      syncPushToGoogleSheets([], [], users);
+  const handleResetLocalData = async () => {
+    if (window.confirm('⚠️ คุณแน่ใจหรือไม่ว่าต้องการล้างข้อมูลพัสดุและรายการทั้งหมดออกจากระบบ? การกระทำนี้จะลบข้อมูลจาก Firebase ถาวร และไม่สามารถย้อนกลับได้')) {
+      setIsSyncing(true);
+      setSyncError(null);
+      try {
+        for (const p of products) {
+          await deleteProductFromDb(p.code);
+        }
+        for (const t of transactions) {
+          await deleteDoc(doc(db, 'transactions', t.id));
+        }
+        setProducts([]);
+        setTransactions([]);
+        setSyncSuccessMessage('ล้างข้อมูลพัสดุในฐานข้อมูล Firebase เรียบร้อยแล้ว!');
+        setTimeout(() => setSyncSuccessMessage(''), 3000);
+      } catch (err: any) {
+        setSyncError('ล้างข้อมูลผิดพลาด: ' + err.message);
+      } finally {
+        setIsSyncing(false);
+      }
     }
   };
 
   if (!currentUser) {
     return <Login onLoginSuccess={handleLoginSuccess} users={users} />;
+  }
+
+  // Loading Screen for Firestore DB
+  if (isLoadingDb) {
+    return (
+      <div id="db-loading-screen" className="min-h-screen bg-slate-50 flex flex-col items-center justify-center font-sans">
+        <div className="p-8 bg-white rounded-2xl border border-slate-200 shadow-xl text-center max-w-sm space-y-4">
+          <div className="animate-spin rounded-full h-10 w-10 border-4 border-indigo-600 border-t-transparent mx-auto"></div>
+          <h2 className="font-bold text-slate-800 text-sm">กำลังเชื่อมต่อฐานข้อมูล Cloud...</h2>
+          <p className="text-xs text-slate-500">กรุณารอสักครู่ ระบบกำลังจัดเตรียมข้อมูลคลังพัสดุจาก console.firebase.google.com</p>
+        </div>
+      </div>
+    );
   }
 
   const navItems = [
@@ -332,7 +361,7 @@ export default function App() {
     { id: 'logs', label: 'ประวัติการเคลื่อนไหว', icon: RefreshCcw },
     { id: 'reports', label: 'รายงาน พิมพ์ (Export)', icon: FileText },
     ...(currentUser.role === 'Admin' ? [
-      { id: 'google_sheets', label: '📊 เชื่อมต่อ Google Sheets', icon: FileSpreadsheet },
+      { id: 'firebase_db', label: '🔥 ฐานข้อมูล Firebase', icon: Database },
       { id: 'users', label: 'จัดการข้อมูลผู้ใช้', icon: Users }
     ] : []),
   ];
@@ -371,17 +400,10 @@ export default function App() {
         {/* Google Sheets Connection Status Badge */}
         <div className="mx-4 mt-2 px-3.5 py-2 bg-white border border-slate-200/60 rounded-xl flex items-center justify-between text-[10px]">
           <span className="text-slate-400 font-medium">คลังข้อมูลหลัก:</span>
-          {googleEmail ? (
-            <div className="flex items-center gap-1.5 text-emerald-600 font-bold" title={googleEmail}>
-              <span className="h-1.5 w-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
-              Google Sheets
-            </div>
-          ) : (
-            <div className="flex items-center gap-1.5 text-slate-400 font-semibold">
-              <span className="h-1.5 w-1.5 bg-slate-300 rounded-full"></span>
-              เครื่องเบราว์เซอร์
-            </div>
-          )}
+          <div className="flex items-center gap-1.5 text-emerald-600 font-bold">
+            <span className="h-1.5 w-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
+            Cloud Firestore
+          </div>
         </div>
 
         {/* Sidebar Menu Links */}
@@ -422,7 +444,7 @@ export default function App() {
           <div className="flex flex-col">
             <span className="font-bold text-slate-900 text-sm leading-none">คลังสโตร์หอพัก</span>
             <span className="text-[8px] text-slate-500 mt-0.5">
-              {googleEmail ? '🟢 ซิงค์ผ่าน Google Sheets' : '💾 บันทึกในเครื่อง (Local)'}
+              🟢 เชื่อมต่อฐานข้อมูล Cloud Firestore
             </span>
           </div>
         </div>
@@ -474,13 +496,13 @@ export default function App() {
       {/* CORE CONTENT PANEL */}
       <main id="main-content-panel" className="flex-1 overflow-y-auto p-4 md:p-8 flex flex-col">
 
-        {/* Global Google Sheets Background Sync Notifications */}
+        {/* Global Firebase Background Sync Notifications */}
         {(isSyncing || syncSuccessMessage || syncError) && (
           <div className="mb-4 transition-all duration-300">
             {isSyncing && (
               <div className="flex items-center gap-2 px-4 py-2 bg-indigo-50 border border-indigo-100 rounded-xl text-xs text-indigo-700 font-semibold animate-pulse shadow-sm w-fit">
                 <RefreshCcw className="h-3.5 w-3.5 text-indigo-500 animate-spin" />
-                <span>กำลังบันทึกและซิงค์ข้อมูลลง Google Sheets...</span>
+                <span>กำลังบันทึกและซิงค์ข้อมูลลง Cloud Firestore...</span>
               </div>
             )}
             {syncSuccessMessage && !isSyncing && (
@@ -560,12 +582,12 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'google_sheets' && currentUser.role === 'Admin' && (
-            <GoogleSheetsConfig
+          {activeTab === 'firebase_db' && currentUser.role === 'Admin' && (
+            <FirebaseConfig
               products={products}
               transactions={transactions}
               users={users}
-              onSyncSuccess={handleGoogleSyncSuccess}
+              onResetData={handleResetLocalData}
               currentUser={currentUser}
             />
           )}

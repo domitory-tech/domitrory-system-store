@@ -1,0 +1,68 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "Dormitory store inventory product",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "description": "Product code / barcode" },
+        "name": { "type": "string", "description": "Product name" },
+        "category": { "type": "string", "description": "Product category" },
+        "quantity": { "type": "integer", "description": "Available stock quantity" },
+        "minStock": { "type": "integer", "description": "Minimum stock threshold for alert" },
+        "imageUrl": { "type": "string", "description": "Optional Base64 or URL of the image" },
+        "unit": { "type": "string", "description": "Unit of measurement (e.g. ชิ้น, แพ็ค)" },
+        "updatedAt": { "type": "string", "description": "Last updated timestamp" },
+        "building": { "type": "string", "description": "Storage building name" },
+        "location": { "type": "string", "description": "Specific storage shelf/rack location" }
+      },
+      "required": ["code", "name", "category", "quantity", "minStock", "unit", "updatedAt"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Store inventory intake or withdraw transaction history log",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Transaction unique ID" },
+        "code": { "type": "string", "description": "Product code referenced" },
+        "productName": { "type": "string", "description": "Snapshot of the product name at the time" },
+        "category": { "type": "string", "description": "Snapshot of product category" },
+        "type": { "type": "string", "enum": ["INTAKE", "WITHDRAW"], "description": "Type of transaction" },
+        "quantity": { "type": "integer", "description": "Transaction quantity" },
+        "prevQuantity": { "type": "integer", "description": "Stock quantity before transaction" },
+        "newQuantity": { "type": "integer", "description": "Stock quantity after transaction" },
+        "operator": { "type": "string", "description": "User who performed the transaction" },
+        "recipient": { "type": "string", "description": "Optional recipient name for withdrawals" },
+        "note": { "type": "string", "description": "Optional transaction remark/notes" },
+        "timestamp": { "type": "string", "description": "Transaction timestamp" }
+      },
+      "required": ["id", "code", "productName", "category", "type", "quantity", "prevQuantity", "newQuantity", "operator", "timestamp"]
+    },
+    "User": {
+      "title": "User",
+      "description": "System user accounts for logging into the store dashboard",
+      "type": "object",
+      "properties": {
+        "username": { "type": "string", "description": "Unique username" },
+        "fullName": { "type": "string", "description": "Full name of the user" },
+        "role": { "type": "string", "description": "User role (e.g., Admin, Staff)" },
+        "password": { "type": "string", "description": "Plaintext or hashed login password" }
+      },
+      "required": ["username", "fullName", "role", "password"]
+    }
+  },
+  "firestore": {
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Collection storing all active products in the inventory"
+    },
+    "/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "Collection tracking all stock intake and withdrawal transaction logs"
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Collection of system user profiles authorized to log in"
+    }
+  }
+}
