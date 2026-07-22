@@ -610,7 +610,7 @@ export default function App() {
             <Warehouse className="h-5 w-5" />
           </div>
           <div>
-            <h1 className="font-bold text-slate-900 text-sm tracking-tight">ระบบคลังสโตร์หอพัก</h1>
+            <h1 className="font-bold text-slate-900 text-sm tracking-tight">ระบบบริหารจัดการสโตร์หอพัก</h1>
             <p className="text-[10px] text-slate-500 font-light mt-0.5">เบิก-นำเข้า-จ่ายพัสดุ</p>
           </div>
         </div>
@@ -675,7 +675,7 @@ export default function App() {
         <div className="flex items-center gap-2.5">
           <Warehouse className="h-5 w-5 text-indigo-600" />
           <div className="flex flex-col">
-            <span className="font-bold text-slate-900 text-sm leading-none">คลังสโตร์หอพัก</span>
+            <span className="font-bold text-slate-900 text-sm leading-none">ระบบบริหารจัดการสโตร์หอพัก</span>
             <span className="text-[8px] text-slate-500 mt-0.5">
               🟢 เชื่อมต่อฐานข้อมูล Cloud Firestore
             </span>

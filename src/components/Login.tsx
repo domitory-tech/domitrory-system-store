@@ -57,7 +57,7 @@ export default function Login({ onLoginSuccess, users }: LoginProps) {
           <div className="inline-flex p-3 bg-white/10 rounded-2xl backdrop-blur-md mb-4 border border-white/10">
             <Warehouse className="h-10 w-10 text-indigo-300" />
           </div>
-          <h1 id="login-title" className="text-2xl font-bold tracking-tight">ระบบสโตร์หอพัก</h1>
+          <h1 id="login-title" className="text-2xl font-bold tracking-tight">ระบบบริหารจัดการสโตร์หอพัก</h1>
           <p id="login-subtitle" className="text-sm text-indigo-200 mt-1 font-light">เบิก-นำเข้า-จ่าย และแจ้งเตือนสต็อกสินค้า</p>
         </div>
 
@@ -129,7 +129,7 @@ export default function Login({ onLoginSuccess, users }: LoginProps) {
 
         {/* Footer Details */}
         <div id="login-footer" className="bg-slate-50 p-4 text-center border-t border-slate-100 text-[11px] text-slate-400">
-          เข้าใช้งานด้วยบัญชีจำลอง: admin (รหัส admin1234) หรือ staff (รหัส staff1234)
+          ระบบบริหารจัดการคลังสโตร์หอพัก
         </div>
       </div>
 

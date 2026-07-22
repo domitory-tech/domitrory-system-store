@@ -1,5 +1,5 @@
 {
-  "name": "ระบบจัดการสโตร์และคลังสินค้า",
+  "name": "ระบบบริหารจัดการสโตร์หอพัก",
   "description": "ระบบจัดการเบิก-นำเข้า-จ่ายสินค้า และแจ้งเตือนสต็อกขั้นต่ำ เชื่อมต่อ Google Sheets และ Google Drive",
   "requestFramePermissions": [],
   "majorCapabilities": [

@@ -377,11 +377,11 @@ export default function FirebaseConfig({
           </div>
         </div>
 
-        {/* Right Column: Danger Zone (Highly polished with user-requested items inside) */}
-        <div className="p-6 bg-white border border-rose-100 rounded-2xl space-y-5 flex flex-col justify-between">
-          <div className="space-y-2">
+        {/* Right Column: Danger Zone (Buttons and Restore Backup directly at top following warning text) */}
+        <div className="p-6 bg-white border border-rose-100 rounded-2xl space-y-4 flex flex-col justify-start shadow-sm">
+          <div className="space-y-1.5 pb-1 border-b border-rose-100/80">
             <h3 className="font-extrabold text-rose-600 text-sm flex items-center gap-1.5">
-              <ShieldAlert className="h-4.5 w-4.5" />
+              <ShieldAlert className="h-4.5 w-4.5 text-rose-600 shrink-0" />
               โซนควบคุมความปลอดภัย (Danger Zone)
             </h3>
             <p className="text-[11px] text-slate-500 leading-relaxed font-light">
@@ -389,11 +389,11 @@ export default function FirebaseConfig({
             </p>
           </div>
 
-          <div className="space-y-3 pt-2">
+          <div className="space-y-3">
             {/* 1. RESET DB BUTTON */}
             <button
               onClick={onResetData}
-              className="w-full py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl border border-rose-200 hover:border-rose-300 transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-sm"
+              className="w-full py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl border border-rose-200 hover:border-rose-300 transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-xs active:scale-98"
             >
               <RefreshCw className="h-3.5 w-3.5" />
               ล้างข้อมูลทั้งหมดในคลัง (Reset DB)
@@ -402,7 +402,7 @@ export default function FirebaseConfig({
             {/* 2. BACKUP DB BUTTON */}
             <button
               onClick={handleBackup}
-              className="w-full py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-xs rounded-xl border border-slate-200 hover:border-slate-300 transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-sm"
+              className="w-full py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-xs rounded-xl border border-slate-200 hover:border-slate-300 transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-xs active:scale-98"
             >
               <Download className="h-3.5 w-3.5 text-slate-500" />
               สำรองข้อมูลคลังพัสดุ (Backup DB)
@@ -411,15 +411,15 @@ export default function FirebaseConfig({
             {/* 3. EXPORT TO GOOGLE SHEETS BUTTON */}
             <button
               onClick={handleExportToSheets}
-              className="w-full py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs rounded-xl border border-emerald-200 hover:border-emerald-300 transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-sm"
+              className="w-full py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs rounded-xl border border-emerald-200 hover:border-emerald-300 transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-xs active:scale-98"
             >
               <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
               ส่งออกในรูปแบบ Google Sheets
             </button>
 
             {/* 4. RESTORE SECTION */}
-            <div className="pt-2 border-t border-slate-100 space-y-2">
-              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">นำเข้าไฟล์สำรอง (Restore Backup)</label>
+            <div className="pt-2.5 border-t border-slate-100 space-y-2">
+              <label htmlFor="restore-file-input" className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">นำเข้าไฟล์สำรอง (Restore Backup)</label>
               
               <div className="flex items-center gap-1.5">
                 <input
