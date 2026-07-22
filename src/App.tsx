@@ -4,8 +4,8 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, Package, ArrowUpRight, ArrowDownRight, RefreshCcw, LogOut, Menu, X, Warehouse, FileText, AlertCircle, Database, Users } from 'lucide-react';
-import { User, Product, Transaction } from './types';
+import { LayoutDashboard, Package, ArrowUpRight, ArrowDownRight, RefreshCcw, LogOut, Menu, X, Warehouse, FileText, AlertCircle, Database, Users, Tags } from 'lucide-react';
+import { User, Product, Transaction, Category } from './types';
 import { INITIAL_PRODUCTS, INITIAL_TRANSACTIONS, INITIAL_CATEGORIES } from './data/mockData';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
@@ -14,6 +14,7 @@ import Intake from './components/Intake';
 import Withdraw from './components/Withdraw';
 import Logs from './components/Logs';
 import UsersManagement from './components/UsersManagement';
+import CategoriesManagement from './components/CategoriesManagement';
 import Reports from './components/Reports';
 import FirebaseConfig from './components/FirebaseConfig';
 import {
@@ -24,6 +25,8 @@ import {
   saveTransaction,
   saveUser,
   deleteUserFromDb,
+  saveCategory,
+  deleteCategoryFromDb,
   db,
   logDatabaseAction
 } from './utils/firebase';
@@ -36,8 +39,10 @@ export default function App() {
   // Firebase database states
   const [products, setProducts] = useState<Product[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [selectedProductCode, setSelectedProductCode] = useState<string>('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
 
   const [isLoadingDb, setIsLoadingDb] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -66,11 +71,18 @@ export default function App() {
     }
   }, [users]);
 
+  useEffect(() => {
+    if (categories.length > 0) {
+      localStorage.setItem('gas_store_categories', JSON.stringify(categories));
+    }
+  }, [categories]);
+
   // Initialize and load from Firebase with real-time listeners
   useEffect(() => {
     let unsubscribeProducts: () => void;
     let unsubscribeTransactions: () => void;
     let unsubscribeUsers: () => void;
+    let unsubscribeCategories: () => void;
 
     const setupFirebaseListeners = async () => {
       setIsLoadingDb(true);
@@ -114,6 +126,17 @@ export default function App() {
           console.error("Users subscription error:", error);
         });
 
+        // Subscribe to categories collection in real-time
+        unsubscribeCategories = onSnapshot(collection(db, 'categories'), (snapshot) => {
+          const catList: Category[] = [];
+          snapshot.forEach((doc) => {
+            catList.push(doc.data() as Category);
+          });
+          setCategories(catList);
+        }, (error) => {
+          console.error("Categories subscription error:", error);
+        });
+
       } catch (err: any) {
         console.error('Failed to load Firebase data:', err);
         setSyncError('กำลังรันระบบในโหมดสำรองข้อมูลท้องถิ่น (Local Fallback Mode) เนื่องจากเชื่อมต่อ Firebase ไม่สำเร็จ: ' + err.message);
@@ -122,9 +145,11 @@ export default function App() {
         const savedProducts = localStorage.getItem('gas_store_products');
         const savedTransactions = localStorage.getItem('gas_store_transactions');
         const savedUsers = localStorage.getItem('gas_store_users');
+        const savedCategories = localStorage.getItem('gas_store_categories');
 
         setProducts(savedProducts ? JSON.parse(savedProducts) : INITIAL_PRODUCTS);
         setTransactions(savedTransactions ? JSON.parse(savedTransactions) : INITIAL_TRANSACTIONS);
+        setCategories(savedCategories ? JSON.parse(savedCategories) : INITIAL_CATEGORIES);
         setUsers(savedUsers ? JSON.parse(savedUsers) : [
           { username: 'admin', fullName: 'ผู้ดูแลระบบทั่วไป', role: 'Admin', password: 'admin1234' },
           { username: 'staff', fullName: 'เจ้าหน้าที่พัสดุหอพัก', role: 'Staff', password: 'staff1234' }
@@ -140,6 +165,7 @@ export default function App() {
       if (unsubscribeProducts) unsubscribeProducts();
       if (unsubscribeTransactions) unsubscribeTransactions();
       if (unsubscribeUsers) unsubscribeUsers();
+      if (unsubscribeCategories) unsubscribeCategories();
     };
   }, []);
 
@@ -197,8 +223,64 @@ export default function App() {
     }
   };
 
+  // Handlers for Categories Management
+  const handleAddCategory = async (newCategory: Category) => {
+    setCategories(prev => [...prev, newCategory]);
+    setIsSyncing(true);
+    setSyncError(null);
+    try {
+      await saveCategory(newCategory);
+      setSyncSuccessMessage(`บันทึกหมวดหมู่ "${newCategory.name}" สำเร็จ!`);
+      setTimeout(() => setSyncSuccessMessage(''), 3000);
+    } catch (err: any) {
+      setSyncError('เกิดข้อผิดพลาดในการบันทึกหมวดหมู่: ' + err.message);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleUpdateCategory = async (oldCategory: Category, updatedCategory: Category) => {
+    setCategories(prev => prev.map(c => c.id === updatedCategory.id ? updatedCategory : c));
+    setIsSyncing(true);
+    setSyncError(null);
+    try {
+      await saveCategory(updatedCategory);
+      // If name changed, update existing products with old category name
+      if (oldCategory.name !== updatedCategory.name) {
+        const affectedProducts = products.filter(p => p.category === oldCategory.name);
+        for (const p of affectedProducts) {
+          const updatedP = { ...p, category: updatedCategory.name };
+          await saveProduct(updatedP);
+        }
+      }
+      setSyncSuccessMessage(`แก้ไขข้อมูลหมวดหมู่ "${updatedCategory.name}" สำเร็จ!`);
+      setTimeout(() => setSyncSuccessMessage(''), 3000);
+    } catch (err: any) {
+      setSyncError('เกิดข้อผิดพลาดในการแก้ไขหมวดหมู่: ' + err.message);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleDeleteCategory = async (categoryToDelete: Category) => {
+    setCategories(prev => prev.filter(c => c.id !== categoryToDelete.id));
+    setIsSyncing(true);
+    setSyncError(null);
+    try {
+      await deleteCategoryFromDb(categoryToDelete.id);
+      setSyncSuccessMessage(`ลบหมวดหมู่ "${categoryToDelete.name}" สำเร็จ!`);
+      setTimeout(() => setSyncSuccessMessage(''), 3000);
+    } catch (err: any) {
+      setSyncError('เกิดข้อผิดพลาดในการลบหมวดหมู่: ' + err.message);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   // ดึงรายการประเภทหมวดหมู่ที่มีในฐานข้อมูล
-  const categoriesList = INITIAL_CATEGORIES.map(cat => cat.name);
+  const categoriesList = categories.length > 0 
+    ? categories.map(cat => cat.name) 
+    : INITIAL_CATEGORIES.map(cat => cat.name);
 
   const handleLoginSuccess = (user: User) => {
     setCurrentUser(user);
@@ -410,27 +492,31 @@ export default function App() {
     }
   };
 
-  // ล้างข้อมูลทั้งหมด
-  const handleResetLocalData = async () => {
-    if (window.confirm('⚠️ คุณแน่ใจหรือไม่ว่าต้องการล้างข้อมูลพัสดุและประวัติทั้งหมดออกจากระบบ? การกระทำนี้จะลบข้อมูลออกจากระบบฐานข้อมูล Firebase แบบถาวรและไม่สามารถย้อนกลับได้')) {
-      setIsSyncing(true);
-      setSyncError(null);
-      try {
-        for (const p of products) {
-          await deleteProductFromDb(p.code);
-        }
-        for (const t of transactions) {
-          await deleteDoc(doc(db, 'transactions', t.id));
-        }
-        setProducts([]);
-        setTransactions([]);
-        setSyncSuccessMessage('ล้างข้อมูลพัสดุและรายการเคลื่อนไหวทั้งหมดใน Firebase สำเร็จ!');
-        setTimeout(() => setSyncSuccessMessage(''), 3000);
-      } catch (err: any) {
-        setSyncError('ล้างข้อมูลผิดพลาด: ' + err.message);
-      } finally {
-        setIsSyncing(false);
+  // เปิดโมดอลยืนยันล้างข้อมูล
+  const handleResetLocalData = () => {
+    setIsResetModalOpen(true);
+  };
+
+  // ดำเนินการล้างข้อมูลรายการพัสดุและประวัติเคลื่อนไหวจริงเมื่อผู้ใช้ยืนยันในโมดอล
+  const handleConfirmResetData = async () => {
+    setIsSyncing(true);
+    setSyncError(null);
+    try {
+      for (const p of products) {
+        await deleteProductFromDb(p.code);
       }
+      for (const t of transactions) {
+        await deleteDoc(doc(db, 'transactions', t.id));
+      }
+      setProducts([]);
+      setTransactions([]);
+      setIsResetModalOpen(false);
+      setSyncSuccessMessage('ล้างรายการพัสดุ (products) และประวัติเคลื่อนไหว (transactions) ใน Firebase สำเร็จ! (รักษาตาราง settings, users และ categories ไว้ตามเดิม)');
+      setTimeout(() => setSyncSuccessMessage(''), 4000);
+    } catch (err: any) {
+      setSyncError('เกิดข้อผิดพลาดในการล้างข้อมูล: ' + err.message);
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -502,6 +588,7 @@ export default function App() {
   const navItems = [
     { id: 'dashboard', label: 'แผงควบคุมหลัก', icon: LayoutDashboard },
     { id: 'inventory', label: 'ทะเบียนคลังพัสดุ', icon: Package },
+    { id: 'categories', label: 'หมวดหมู่อุปกรณ์', icon: Tags },
     { id: 'intake', label: 'นำเข้าพัสดุ', icon: ArrowUpRight },
     { id: 'withdraw', label: 'เบิกจ่ายพัสดุ', icon: ArrowDownRight },
     { id: 'logs', label: 'ประวัติการเคลื่อนไหว', icon: RefreshCcw },
@@ -682,6 +769,7 @@ export default function App() {
             <Inventory
               products={products}
               categories={categoriesList}
+              categoriesData={categories}
               currentUser={currentUser}
               onSelectProductForIntake={handleSelectProductForIntake}
               onSelectProductForWithdraw={handleSelectProductForWithdraw}
@@ -691,10 +779,22 @@ export default function App() {
             />
           )}
 
+          {activeTab === 'categories' && (
+            <CategoriesManagement
+              categories={categories}
+              products={products}
+              onAddCategory={handleAddCategory}
+              onUpdateCategory={handleUpdateCategory}
+              onDeleteCategory={handleDeleteCategory}
+              currentUser={currentUser}
+            />
+          )}
+
           {activeTab === 'intake' && (
             <Intake
               products={products}
               categories={categoriesList}
+              categoriesData={categories}
               currentUser={currentUser}
               onAddTransaction={handleProcessIntake}
               selectedProductCode={selectedProductCode}
@@ -765,6 +865,79 @@ export default function App() {
           </div>
         </footer>
       </main>
+
+      {/* RESET DB CONFIRMATION MODAL */}
+      {isResetModalOpen && (
+        <div id="reset-db-modal" className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl border border-rose-100 shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-rose-600 to-red-700 p-5 text-white flex items-center gap-3">
+              <div className="p-2.5 bg-white/20 rounded-xl">
+                <AlertCircle className="h-6 w-6 text-white" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-base tracking-tight">ยืนยันการล้างข้อมูลในคลัง (Reset DB)</h3>
+                <p className="text-xs text-rose-100 mt-0.5 font-light">โปรดตรวจสอบรายละเอียดขอบเขตการลบข้อมูลก่อนดำเนินการ</p>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-4 text-xs text-slate-700">
+              <p className="font-bold text-slate-900 text-sm">
+                ⚠️ คุณแน่ใจหรือไม่ว่าต้องการล้างข้อมูลในระบบ?
+              </p>
+
+              <div className="bg-rose-50 border border-rose-200/80 rounded-xl p-4 space-y-2">
+                <p className="font-bold text-rose-800 text-[11px] uppercase tracking-wider">ขอบเขตคอลเลกชันที่จะถูกล้างข้อมูล (Cleared Collections):</p>
+                <ul className="space-y-1.5 text-rose-900 font-medium list-disc pl-4">
+                  <li><strong>products (รายการพัสดุ):</strong> จะถูกล้างข้อมูลพัสดุออกทั้งหมด (ไม่ลบตาราง)</li>
+                  <li><strong>transactions (ประวัติเคลื่อนไหว):</strong> จะถูกล้างประวัติออกทั้งหมด (ไม่ลบตาราง)</li>
+                </ul>
+              </div>
+
+              <div className="bg-emerald-50 border border-emerald-200/80 rounded-xl p-4 space-y-2">
+                <p className="font-bold text-emerald-800 text-[11px] uppercase tracking-wider">ข้อมูลส่วนที่จะถูกรักษาไว้ตามเดิม (Preserved Data):</p>
+                <ul className="space-y-1 text-emerald-900 font-medium list-disc pl-4">
+                  <li><strong>settings (การตั้งค่า):</strong> จะคงอยู่ตามเดิม ไม่ถูกลบหรือแก้ไข</li>
+                  <li><strong>users (ข้อมูลผู้ใช้งาน):</strong> จะคงอยู่ตามเดิม ไม่ถูกลบหรือแก้ไข</li>
+                  <li><strong>categories (หมวดหมู่อุปกรณ์):</strong> จะคงอยู่ตามเดิม ไม่ถูกลบหรือแก้ไข</li>
+                </ul>
+              </div>
+
+              <p className="text-[11px] text-slate-500 italic">
+                * ข้อมูลที่ถูกล้างออกจากระบบ Cloud Firestore จะไม่สามารถเรียกคืนได้ เว้นแต่ท่านได้ทำไฟล์สำรอง (Backup DB) ไว้ก่อนหน้า
+              </p>
+            </div>
+
+            {/* Modal Footer Actions */}
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setIsResetModalOpen(false)}
+                disabled={isSyncing}
+                className="px-4 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer disabled:opacity-50"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmResetData}
+                disabled={isSyncing}
+                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs transition-all shadow-md shadow-rose-600/20 active:scale-95 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {isSyncing ? (
+                  <>
+                    <RefreshCcw className="h-4 w-4 animate-spin" />
+                    <span>กำลังล้างข้อมูล...</span>
+                  </>
+                ) : (
+                  <span>ยืนยันล้างข้อมูลในคลัง</span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

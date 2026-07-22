@@ -16,8 +16,24 @@ import {
   getDocFromServer
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { Product, Transaction, User } from '../types';
-import { INITIAL_PRODUCTS, INITIAL_TRANSACTIONS } from '../data/mockData';
+import { Product, Transaction, User, Category } from '../types';
+import { INITIAL_PRODUCTS, INITIAL_TRANSACTIONS, INITIAL_CATEGORIES } from '../data/mockData';
+
+// Helper to remove 'undefined' fields prior to sending to Firestore
+export function sanitizeForFirestore<T extends Record<string, any>>(obj: T): T {
+  if (!obj || typeof obj !== 'object') return obj;
+  const cleanObj: Record<string, any> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+        cleanObj[key] = sanitizeForFirestore(value);
+      } else {
+        cleanObj[key] = value;
+      }
+    }
+  }
+  return cleanObj as T;
+}
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
@@ -110,7 +126,8 @@ export const getProducts = async (): Promise<Product[]> => {
 export const saveProduct = async (product: Product): Promise<void> => {
   const colPath = 'products';
   try {
-    await setDoc(doc(db, colPath, product.code), product);
+    const cleanData = sanitizeForFirestore(product);
+    await setDoc(doc(db, colPath, product.code), cleanData);
     logDatabaseAction(`บันทึก/อัปเดตข้อมูลพัสดุสำเร็จ: ${product.code} - ${product.name} (คงเหลือ: ${product.quantity} ${product.unit})`, 'success');
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, `${colPath}/${product.code}`);
@@ -149,10 +166,50 @@ export const getTransactions = async (): Promise<Transaction[]> => {
 export const saveTransaction = async (tx: Transaction): Promise<void> => {
   const colPath = 'transactions';
   try {
-    await setDoc(doc(db, colPath, tx.id), tx);
+    const cleanData = sanitizeForFirestore(tx);
+    await setDoc(doc(db, colPath, tx.id), cleanData);
     logDatabaseAction(`บันทึกรายการเคลื่อนไหวสำเร็จ: ${tx.id} | ${tx.type === 'INTAKE' ? 'นำเข้า (+)' : 'เบิกจ่าย (-)'} พัสดุ ${tx.code} จำนวน ${tx.quantity} (${tx.operator})`, 'success');
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, `${colPath}/${tx.id}`);
+  }
+};
+
+// Fetch all categories
+export const getCategoriesFromDb = async (): Promise<Category[]> => {
+  const colPath = 'categories';
+  try {
+    const querySnapshot = await getDocs(collection(db, colPath));
+    const items: Category[] = [];
+    querySnapshot.forEach((doc) => {
+      items.push(doc.data() as Category);
+    });
+    return items;
+  } catch (err) {
+    handleFirestoreError(err, OperationType.GET, colPath);
+    return [];
+  }
+};
+
+// Save category
+export const saveCategory = async (category: Category): Promise<void> => {
+  const colPath = 'categories';
+  try {
+    const cleanData = sanitizeForFirestore(category);
+    await setDoc(doc(db, colPath, category.id), cleanData);
+    logDatabaseAction(`บันทึกข้อมูลหมวดหมู่พัสดุสำเร็จ: ${category.name}`, 'success');
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, `${colPath}/${category.id}`);
+  }
+};
+
+// Delete category
+export const deleteCategoryFromDb = async (id: string): Promise<void> => {
+  const colPath = 'categories';
+  try {
+    await deleteDoc(doc(db, colPath, id));
+    logDatabaseAction(`ลบข้อมูลหมวดหมู่พัสดุรหัส ${id} สำเร็จ`, 'warn');
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, `${colPath}/${id}`);
   }
 };
 
@@ -176,7 +233,8 @@ export const getUsersFromDb = async (): Promise<User[]> => {
 export const saveUser = async (user: User): Promise<void> => {
   const colPath = 'users';
   try {
-    await setDoc(doc(db, colPath, user.username), user);
+    const cleanData = sanitizeForFirestore(user);
+    await setDoc(doc(db, colPath, user.username), cleanData);
     logDatabaseAction(`บันทึกข้อมูลบัญชีผู้ใช้งานสำเร็จ: ${user.username} (${user.fullName} | สิทธิ์: ${user.role})`, 'success');
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, `${colPath}/${user.username}`);
@@ -195,14 +253,16 @@ export const deleteUserFromDb = async (username: string): Promise<void> => {
 };
 
 // Seeds Firestore database if it is empty
-export const seedInitialData = async (): Promise<{ products: Product[]; transactions: Transaction[]; users: User[] }> => {
+export const seedInitialData = async (): Promise<{ products: Product[]; transactions: Transaction[]; users: User[]; categories: Category[] }> => {
   const dbUsers = await getUsersFromDb();
   const dbProducts = await getProducts();
   const dbTransactions = await getTransactions();
+  const dbCategories = await getCategoriesFromDb();
 
   let finalUsers = dbUsers;
   let finalProducts = dbProducts;
   let finalTransactions = dbTransactions;
+  let finalCategories = dbCategories;
 
   if (dbUsers.length === 0) {
     const initialUsers: User[] = [
@@ -213,6 +273,13 @@ export const seedInitialData = async (): Promise<{ products: Product[]; transact
       await saveUser(u);
     }
     finalUsers = initialUsers;
+  }
+
+  if (dbCategories.length === 0) {
+    for (const c of INITIAL_CATEGORIES) {
+      await saveCategory(c);
+    }
+    finalCategories = INITIAL_CATEGORIES;
   }
 
   if (dbProducts.length === 0) {
@@ -229,7 +296,7 @@ export const seedInitialData = async (): Promise<{ products: Product[]; transact
     finalTransactions = INITIAL_TRANSACTIONS;
   }
 
-  return { products: finalProducts, transactions: finalTransactions, users: finalUsers };
+  return { products: finalProducts, transactions: finalTransactions, users: finalUsers, categories: finalCategories };
 };
 
 /**

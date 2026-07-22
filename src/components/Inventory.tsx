@@ -4,12 +4,13 @@
  */
 
 import React, { useState } from 'react';
-import { Search, Filter, AlertTriangle, AlertCircle, ShoppingBag, Plus, Minus, Grid, List, Edit2, Trash2 } from 'lucide-react';
-import { Product, User } from '../types';
+import { Search, Filter, AlertTriangle, AlertCircle, ShoppingBag, Plus, Minus, Grid, List, Edit2, Trash2, Folder, ExternalLink } from 'lucide-react';
+import { Product, User, Category } from '../types';
 
 interface InventoryProps {
   products: Product[];
   categories: string[];
+  categoriesData?: Category[];
   currentUser: User;
   onSelectProductForIntake: (code: string) => void;
   onSelectProductForWithdraw: (code: string) => void;
@@ -21,6 +22,7 @@ interface InventoryProps {
 export default function Inventory({ 
   products, 
   categories, 
+  categoriesData = [],
   currentUser,
   onSelectProductForIntake, 
   onSelectProductForWithdraw, 
@@ -503,6 +505,31 @@ export default function Inventory({
                   />
                 </div>
               </div>
+
+              {/* Category Google Drive Folder Link Banner */}
+              {(() => {
+                const selectedCatObj = categoriesData.find(c => c.name === editProductCategory);
+                if (selectedCatObj && selectedCatObj.folderId) {
+                  return (
+                    <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between gap-2 text-xs">
+                      <div className="flex items-center gap-1.5 text-amber-900 font-medium">
+                        <Folder className="h-4 w-4 text-amber-600 shrink-0" />
+                        <span>Google Drive Folder: <code className="font-mono bg-amber-100 px-1 py-0.5 rounded text-amber-800 font-bold">{selectedCatObj.folderId}</code></span>
+                      </div>
+                      <a
+                        href={`https://drive.google.com/drive/folders/${selectedCatObj.folderId}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg transition-colors shrink-0 text-[10px]"
+                      >
+                        <span>เปิด Drive</span>
+                        <ExternalLink className="h-2.5 w-2.5" />
+                      </a>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
 
               {/* Min Stock */}
               <div>

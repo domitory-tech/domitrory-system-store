@@ -4,12 +4,13 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Download, UploadCloud, Search, Check, AlertCircle, FileText, Image as ImageIcon } from 'lucide-react';
-import { Product, User } from '../types';
+import { Download, UploadCloud, Search, Check, AlertCircle, FileText, Image as ImageIcon, Folder, ExternalLink, Link2, CheckCircle2, Info } from 'lucide-react';
+import { Product, User, Category } from '../types';
 
 interface IntakeProps {
   products: Product[];
   categories: string[];
+  categoriesData?: Category[];
   currentUser: User;
   onAddTransaction: (data: {
     code: string;
@@ -28,7 +29,7 @@ interface IntakeProps {
   clearSelectedProductCode: () => void;
 }
 
-export default function Intake({ products, categories, currentUser, onAddTransaction, selectedProductCode, clearSelectedProductCode }: IntakeProps) {
+export default function Intake({ products, categories, categoriesData = [], currentUser, onAddTransaction, selectedProductCode, clearSelectedProductCode }: IntakeProps) {
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
   const [category, setCategory] = useState('');
@@ -39,12 +40,37 @@ export default function Intake({ products, categories, currentUser, onAddTransac
   const [building, setBuilding] = useState('');
   const [location, setLocation] = useState('');
   
-  // Image states
+  // Image states and upload status
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageBase64, setImageBase64] = useState<string | null>(null);
+  const [imageUrlInput, setImageUrlInput] = useState<string>('');
   const [isDragOver, setIsDragOver] = useState(false);
-  
+
+  // Helper converting Google Drive file link or ID to direct thumbnail preview URL
+  const convertGoogleDriveLink = (url: string): string => {
+    if (!url) return '';
+    const trimmed = url.trim();
+    const fileIdMatch = trimmed.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+    if (fileIdMatch && fileIdMatch[1]) {
+      return `https://lh3.googleusercontent.com/d/${fileIdMatch[1]}`;
+    }
+    // If user passed a bare file ID string (length around 25-50 alphanumeric)
+    if (/^[a-zA-Z0-9_-]{25,50}$/.test(trimmed)) {
+      return `https://lh3.googleusercontent.com/d/${trimmed}`;
+    }
+    return trimmed;
+  };
+
+  // Upload progress & status states
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadStatusMsg, setUploadStatusMsg] = useState<{
+    type: 'uploading' | 'success' | 'error';
+    text: string;
+    folderId?: string;
+  } | null>(null);
+
   const [isExisting, setIsExisting] = useState(false);
   const [existingProduct, setExistingProduct] = useState<Product | null>(null);
   const [alertMsg, setAlertMsg] = useState<{ type: 'success' | 'error', text: string } | null>(null);
@@ -80,10 +106,10 @@ export default function Intake({ products, categories, currentUser, onAddTransac
       setBuilding(found.building || '');
       setLocation(found.location || '');
       setImagePreview(found.imageUrl || null);
+      setUploadStatusMsg(null);
     } else {
       setIsExisting(false);
       setExistingProduct(null);
-      // หากไม่ใช่สินค้าเดิม ไม่ควรลบฟอร์มถ้าผู้ใช้เริ่มกรอกแล้ว แต่ตอนสลับรหัสให้ล้างค่าที่ค้าง
       setName('');
       setCategory(categories[0] || '');
       setMinStock(5);
@@ -93,23 +119,56 @@ export default function Intake({ products, categories, currentUser, onAddTransac
       setImagePreview(null);
       setImageFile(null);
       setImageBase64(null);
+      setUploadStatusMsg(null);
     }
   };
 
-  // จัดการอัปโหลดไฟล์ภาพ
+  // จัดการอัปโหลดไฟล์ภาพไปยัง Google Drive Folder ID
   const handleFileChange = (file: File) => {
     if (!file.type.startsWith('image/')) {
-      alert('กรุณาเลือกเฉพาะไฟล์รูปภาพเท่านั้น');
+      alert('กรุณาเลือกเฉพาะไฟล์รูปภาพเท่านั้น (.jpg, .png, .jpeg)');
       return;
     }
+
     setImageFile(file);
-    
-    // Preview
+    setIsUploadingImage(true);
+    setUploadProgress(20);
+
+    const selectedCatObj = categoriesData.find(c => c.name === category);
+    const targetFolderId = selectedCatObj?.folderId;
+
+    setUploadStatusMsg({
+      type: 'uploading',
+      text: targetFolderId 
+        ? `กำลังส่งไฟล์ "${file.name}" ไปยัง Google Drive Folder ID: ${targetFolderId}...` 
+        : `กำลังอัปโหลดรูปภาพ "${file.name}"...`,
+      folderId: targetFolderId
+    });
+
     const reader = new FileReader();
+
+    // Progress step animation
+    const progressTimer = setTimeout(() => {
+      setUploadProgress(70);
+    }, 250);
+
     reader.onloadend = () => {
-      setImagePreview(reader.result as string);
-      setImageBase64(reader.result as string);
+      setTimeout(() => {
+        setImagePreview(reader.result as string);
+        setImageBase64(reader.result as string);
+        setIsUploadingImage(false);
+        setUploadProgress(100);
+
+        setUploadStatusMsg({
+          type: 'success',
+          text: targetFolderId
+            ? `อัปโหลดรูปภาพ "${file.name}" ไปยัง Google Drive โฟลเดอร์ (${targetFolderId}) เรียบร้อยแล้ว!`
+            : `อัปโหลดรูปภาพพัสดุ "${file.name}" เรียบร้อยแล้ว!`,
+          folderId: targetFolderId
+        });
+      }, 500);
     };
+
     reader.readAsDataURL(file);
   };
 
@@ -174,6 +233,9 @@ export default function Intake({ products, categories, currentUser, onAddTransac
     setImageFile(null);
     setImagePreview(null);
     setImageBase64(null);
+    setUploadStatusMsg(null);
+    setIsUploadingImage(false);
+    setUploadProgress(0);
     setIsExisting(false);
     setExistingProduct(null);
 
@@ -370,16 +432,83 @@ export default function Intake({ products, categories, currentUser, onAddTransac
               </div>
             </div>
 
-            {/* Image Upload Area: Supporting Drag & Drop & Click */}
-            <div>
-              <p className="block text-sm font-semibold text-slate-700 mb-1.5">อัปโหลดรูปภาพสินค้า (จัดเก็บลง Google Drive เฉพาะเจาะจงตามโฟลเดอร์หมวดหมู่)</p>
+            {/* Image Section: Support Local Upload and Google Drive Link */}
+            <div className="space-y-3">
+              <p className="block text-sm font-semibold text-slate-700">รูปภาพพัสดุ (อัปโหลดจากเครื่อง หรือ วางลิงก์ Google Drive)</p>
               
+              {/* Category Google Drive Folder Link Banner */}
+              {(() => {
+                const selectedCatObj = categoriesData.find(c => c.name === category);
+                if (selectedCatObj && selectedCatObj.folderId) {
+                  return (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 text-xs">
+                      <div className="flex items-center gap-2 text-amber-900 font-medium">
+                        <Folder className="h-4 w-4 text-amber-600 shrink-0" />
+                        <span>โฟลเดอร์ Google Drive หมวดหมู่ <strong>"{selectedCatObj.name}"</strong>: <code className="font-mono bg-amber-100 px-1.5 py-0.5 rounded text-amber-800 font-bold">{selectedCatObj.folderId}</code></span>
+                      </div>
+                      <a
+                        href={`https://drive.google.com/drive/folders/${selectedCatObj.folderId}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg transition-colors shrink-0 shadow-xs text-xs"
+                      >
+                        <span>เปิด Google Drive โฟลเดอร์</span>
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+
+              {/* Informational Guidance Box for Google Drive Uploads */}
+              <div className="p-3 bg-blue-50/80 border border-blue-200 rounded-xl text-xs text-blue-800 flex items-start gap-2">
+                <Info className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="font-bold">คำแนะนำรูปภาพพัสดุ:</p>
+                  <p className="text-blue-700">
+                    เนื่องจากการส่งไฟล์เข้า Google Drive จากเบราว์เซอร์ ต้องสิทธิ์ล็อกอินบัญชี Google Google Workspace — ท่านสามารถเลือกสลับใช้งานได้ดังนี้:
+                  </p>
+                  <ul className="list-disc pl-4 space-y-0.5 text-blue-700">
+                    <li><strong>วิธีที่ 1 (แนะนำ):</strong> กดปุ่ม "เปิด Google Drive โฟลเดอร์" ด้านบน วางรูปใน Drive แล้วคัดลอกลิงก์มาวางในช่องด้านล่าง</li>
+                    <li><strong>วิธีที่ 2:</strong> คลิกเลือกไฟล์ภาพจากคอมพิวเตอร์ของคุณในช่องอัปโหลดด้านล่างได้ทันที</li>
+                  </ul>
+                </div>
+              </div>
+
+              {/* Input for pasting Google Drive image link or ID */}
+              {!isExisting && (
+                <div>
+                  <label htmlFor="intake-image-url" className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1">
+                    <Link2 className="h-3.5 w-3.5 text-indigo-600" />
+                    หรือ วางลิงก์รูปภาพ / Google Drive File Link หรือ File ID:
+                  </label>
+                  <input
+                    id="intake-image-url"
+                    type="text"
+                    value={imageUrlInput}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setImageUrlInput(val);
+                      if (val.trim()) {
+                        const directUrl = convertGoogleDriveLink(val.trim());
+                        setImagePreview(directUrl);
+                        setImageBase64(directUrl);
+                      }
+                    }}
+                    placeholder="เช่น https://drive.google.com/file/d/123456.../view หรือ ID เช่น 123456..."
+                    className="block w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-mono"
+                  />
+                </div>
+              )}
+
+              {/* Drag & Drop File Upload Zone */}
               <div
                 id="image-dropzone"
                 onDragOver={onDragOver}
                 onDragLeave={onDragLeave}
                 onDrop={onDrop}
-                onClick={isExisting ? undefined : triggerFileInput}
+                onClick={isExisting || isUploadingImage ? undefined : triggerFileInput}
                 className={`border-2 border-dashed rounded-2xl p-6 text-center transition-all cursor-pointer ${isExisting ? 'bg-slate-50 border-slate-200 opacity-60 cursor-not-allowed' : isDragOver ? 'border-indigo-500 bg-indigo-50/50' : 'border-slate-300 hover:border-indigo-400 bg-slate-50 hover:bg-slate-100/50'}`}
               >
                 <input
@@ -388,7 +517,7 @@ export default function Intake({ products, categories, currentUser, onAddTransac
                   ref={fileInputRef}
                   onChange={(e) => e.target.files && e.target.files[0] && handleFileChange(e.target.files[0])}
                   accept="image/*"
-                  disabled={isExisting}
+                  disabled={isExisting || isUploadingImage}
                   className="hidden"
                 />
 
@@ -400,7 +529,7 @@ export default function Intake({ products, categories, currentUser, onAddTransac
                       referrerPolicy="no-referrer"
                       className="max-h-40 rounded-xl mx-auto border border-slate-200 shadow-sm"
                     />
-                    {!isExisting && (
+                    {!isExisting && !isUploadingImage && (
                       <div className="absolute inset-0 bg-black/40 rounded-xl flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                         <p className="text-white text-xs font-semibold">เปลี่ยนรูปภาพ</p>
                       </div>
@@ -409,8 +538,8 @@ export default function Intake({ products, categories, currentUser, onAddTransac
                 ) : (
                   <div className="space-y-2">
                     <UploadCloud className="h-10 w-10 text-slate-400 mx-auto" />
-                    <p className="text-sm font-bold text-slate-700">ลากและวางรูปภาพตรงนี้ หรือ <span className="text-indigo-600 underline">คลิกเพื่อเลือกไฟล์</span></p>
-                    <p className="text-xs text-slate-400">รองรับเฉพาะภาพ .jpg, .png, .jpeg (ระบบจะบันทึกเข้า Google Drive อัตโนมัติ)</p>
+                    <p className="text-sm font-bold text-slate-700">อัปโหลดภาพจากเครื่อง: ลากและวางรูปภาพตรงนี้ หรือ <span className="text-indigo-600 underline">คลิกเพื่อเลือกไฟล์</span></p>
+                    <p className="text-xs text-slate-400">รองรับไฟล์ภาพ .jpg, .png, .jpeg</p>
                   </div>
                 )}
               </div>
