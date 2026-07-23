@@ -282,20 +282,7 @@ export const seedInitialData = async (): Promise<{ products: Product[]; transact
     finalCategories = INITIAL_CATEGORIES;
   }
 
-  if (dbProducts.length === 0) {
-    for (const p of INITIAL_PRODUCTS) {
-      await saveProduct(p);
-    }
-    finalProducts = INITIAL_PRODUCTS;
-  }
-
-  if (dbTransactions.length === 0) {
-    for (const t of INITIAL_TRANSACTIONS) {
-      await saveTransaction(t);
-    }
-    finalTransactions = INITIAL_TRANSACTIONS;
-  }
-
+  // No automatic mock products or transactions seeding - user will add their own items
   return { products: finalProducts, transactions: finalTransactions, users: finalUsers, categories: finalCategories };
 };
 

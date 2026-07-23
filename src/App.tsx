@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, Package, ArrowUpRight, ArrowDownRight, RefreshCcw, LogOut, Menu, X, Warehouse, FileText, AlertCircle, Database, Users, Tags } from 'lucide-react';
+import { LayoutDashboard, Package, ArrowUpRight, ArrowDownRight, RefreshCcw, LogOut, Menu, X, Warehouse, FileText, AlertCircle, Database, Users, Tags, ChevronLeft, ChevronRight } from 'lucide-react';
 import { User, Product, Transaction, Category } from './types';
 import { INITIAL_PRODUCTS, INITIAL_TRANSACTIONS, INITIAL_CATEGORIES } from './data/mockData';
 import Login from './components/Login';
@@ -42,6 +42,7 @@ export default function App() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedProductCode, setSelectedProductCode] = useState<string>('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
 
   const [isLoadingDb, setIsLoadingDb] = useState(true);
@@ -600,47 +601,68 @@ export default function App() {
   ];
 
   return (
-    <div id="main-application-frame" className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans text-slate-800">
+    <div id="main-application-frame" className="min-h-screen bg-slate-50 flex flex-col lg:flex-row font-sans text-slate-800">
       
-      {/* SIDEBAR ON DESKTOP */}
-      <aside id="desktop-sidebar" className="hidden md:flex flex-col w-64 bg-slate-100 text-slate-700 border-r border-slate-200 shrink-0 select-none">
+      {/* SIDEBAR ON DESKTOP ONLY */}
+      <aside 
+        id="desktop-sidebar" 
+        className={`hidden lg:flex flex-col bg-slate-100 text-slate-700 border-r border-slate-200 shrink-0 select-none transition-all duration-300 ${
+          isSidebarCollapsed ? 'w-20' : 'w-64'
+        }`}
+      >
         {/* Brand Banner */}
-        <div className="p-6 border-b border-slate-200 flex items-center gap-3">
-          <div className="p-2 bg-indigo-600 rounded-xl text-white">
-            <Warehouse className="h-5 w-5" />
+        <div className={`p-4 lg:p-5 border-b border-slate-200 flex items-center justify-between gap-2 ${isSidebarCollapsed ? 'justify-center' : ''}`}>
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-2 bg-indigo-600 rounded-xl text-white shrink-0">
+              <Warehouse className="h-5 w-5" />
+            </div>
+            {!isSidebarCollapsed && (
+              <div className="min-w-0">
+                <h1 className="font-bold text-slate-900 text-sm tracking-tight truncate">ระบบบริหารจัดการสโตร์หอพัก</h1>
+                <p className="text-[10px] text-slate-500 font-light mt-0.5 truncate">เบิก-นำเข้า-จ่ายพัสดุ</p>
+              </div>
+            )}
           </div>
-          <div>
-            <h1 className="font-bold text-slate-900 text-sm tracking-tight">ระบบบริหารจัดการสโตร์หอพัก</h1>
-            <p className="text-[10px] text-slate-500 font-light mt-0.5">เบิก-นำเข้า-จ่ายพัสดุ</p>
-          </div>
+          {/* Collapse/Expand Toggle Button for Desktop */}
+          <button
+            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-lg cursor-pointer transition-colors hidden lg:block shrink-0"
+            title={isSidebarCollapsed ? "ขยายเมนูด้านข้าง" : "ย่อเมนูด้านข้างเพื่อเพิ่มพื้นที่"}
+          >
+            {isSidebarCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+          </button>
         </div>
 
         {/* User Information Profile */}
-        <div className="p-4 mx-4 mt-4 bg-slate-200/55 rounded-2xl border border-slate-200/80">
-          <div className="flex items-center gap-3">
-            <div className="h-9 w-9 bg-indigo-600 text-white font-bold rounded-lg flex items-center justify-center text-xs">
+        <div className={`mt-3 mx-3 bg-slate-200/55 rounded-2xl border border-slate-200/80 transition-all ${isSidebarCollapsed ? 'p-2 flex justify-center' : 'p-3.5'}`}>
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="h-9 w-9 bg-indigo-600 text-white font-bold rounded-lg flex items-center justify-center text-xs shrink-0 shadow-sm">
               {currentUser.fullName.charAt(0)}
             </div>
-            <div className="min-w-0">
-              <p className="text-xs font-bold text-slate-800 truncate">{currentUser.fullName}</p>
-              <span className="inline-block text-[9px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-bold uppercase mt-0.5">
-                {currentUser.role}
-              </span>
-            </div>
+            {!isSidebarCollapsed && (
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-slate-800 truncate">{currentUser.fullName}</p>
+                <span className="inline-block text-[9px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-bold uppercase mt-0.5">
+                  {currentUser.role}
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Google Sheets Connection Status Badge */}
-        <div className="mx-4 mt-2 px-3.5 py-2 bg-white border border-slate-200/60 rounded-xl flex items-center justify-between text-[10px]">
-          <span className="text-slate-400 font-medium">คลังข้อมูลหลัก:</span>
-          <div className="flex items-center gap-1.5 text-emerald-600 font-bold">
-            <span className="h-1.5 w-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
-            Cloud Firestore
+        {!isSidebarCollapsed && (
+          <div className="mx-3 mt-2 px-3 py-1.5 bg-white border border-slate-200/60 rounded-xl flex items-center justify-between text-[10px]">
+            <span className="text-slate-400 font-medium">คลังข้อมูลหลัก:</span>
+            <div className="flex items-center gap-1.5 text-emerald-600 font-bold">
+              <span className="h-1.5 w-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
+              Cloud Firestore
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Sidebar Menu Links */}
-        <nav className="flex-1 px-4 mt-4 space-y-1">
+        <nav className="flex-1 px-3 mt-3 space-y-1 overflow-y-auto">
           {navItems.map((item) => {
             const Icon = item.icon;
             const active = activeTab === item.id;
@@ -648,86 +670,216 @@ export default function App() {
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
-                className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-semibold cursor-pointer transition-all ${active ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'}`}
+                title={isSidebarCollapsed ? item.label : undefined}
+                className={`w-full flex items-center gap-3 rounded-xl text-xs font-semibold cursor-pointer transition-all ${
+                  isSidebarCollapsed ? 'p-3 justify-center' : 'px-3.5 py-2.5'
+                } ${
+                  active 
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' 
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                }`}
               >
-                <Icon className="h-4 w-4" />
-                {item.label}
+                <Icon className="h-4 w-4 shrink-0" />
+                {!isSidebarCollapsed && <span className="truncate">{item.label}</span>}
               </button>
             );
           })}
         </nav>
 
         {/* Sidebar Logout Bar */}
-        <div className="p-4 border-t border-slate-200">
+        <div className="p-3 border-t border-slate-200">
           <button
             id="btn-logout-sidebar"
             onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-4 py-2.5 text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-xl text-xs font-semibold cursor-pointer transition-colors"
+            title={isSidebarCollapsed ? "ออกจากระบบ" : undefined}
+            className={`w-full flex items-center gap-3 text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-xl text-xs font-semibold cursor-pointer transition-colors ${
+              isSidebarCollapsed ? 'p-3 justify-center' : 'px-3.5 py-2.5'
+            }`}
           >
-            <LogOut className="h-4 w-4" />
-            ออกจากระบบคลัง
+            <LogOut className="h-4 w-4 shrink-0" />
+            {!isSidebarCollapsed && <span>ออกจากระบบ</span>}
           </button>
         </div>
       </aside>
 
-      {/* MOBILE HEADER BAR */}
-      <header id="mobile-header" className="md:hidden bg-slate-100 text-slate-800 p-4 border-b border-slate-200 flex items-center justify-between shrink-0 select-none">
-        <div className="flex items-center gap-2.5">
-          <Warehouse className="h-5 w-5 text-indigo-600" />
-          <div className="flex flex-col">
-            <span className="font-bold text-slate-900 text-sm leading-none">ระบบบริหารจัดการสโตร์หอพัก</span>
-            <span className="text-[8px] text-slate-500 mt-0.5">
-              🟢 เชื่อมต่อฐานข้อมูล Cloud Firestore
+      {/* MOBILE & TABLET TOP APP BAR / HEADER */}
+      <header id="mobile-header" className="lg:hidden sticky top-0 z-30 bg-white/95 backdrop-blur-md text-slate-800 px-4 py-3 border-b border-slate-200 flex items-center justify-between shrink-0 select-none shadow-xs">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="p-1.5 bg-indigo-600 text-white rounded-xl shrink-0 shadow-xs">
+            <Warehouse className="h-4.5 w-4.5" />
+          </div>
+          <div className="flex flex-col min-w-0">
+            <span className="font-bold text-slate-900 text-xs sm:text-sm leading-tight truncate">ระบบสโตร์หอพัก</span>
+            <span className="text-[9px] text-emerald-600 font-semibold flex items-center gap-1 mt-0.5">
+              <span className="h-1.5 w-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
+              Cloud Firestore
             </span>
           </div>
         </div>
+
         <div className="flex items-center gap-2">
+          {/* User Badge Avatar */}
+          <div className="h-8 w-8 bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold rounded-full flex items-center justify-center text-xs shrink-0">
+            {currentUser.fullName.charAt(0)}
+          </div>
+          {/* Hidden Drawer Toggle Button */}
           <button
             id="btn-toggle-mobile-menu"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="p-1.5 hover:bg-slate-200 rounded-lg text-slate-700 cursor-pointer"
+            className="p-2 hover:bg-slate-100 active:bg-slate-200 rounded-xl text-slate-700 cursor-pointer transition-colors"
+            aria-label="เปิดซ่อนเมนู"
           >
             {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
         </div>
       </header>
 
-      {/* MOBILE DROPDOWN NAVIGATION MENU */}
+      {/* MOBILE & TABLET SLIDE-OVER HIDDEN DRAWER MENU (ซ่อนเมนูแบบสไลด์ข้าง) */}
       {mobileMenuOpen && (
-        <div id="mobile-navigation-drawer" className="md:hidden bg-slate-100 border-b border-slate-200 px-4 py-3 space-y-1 select-none">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const active = activeTab === item.id;
-            return (
+        <div id="mobile-drawer-overlay" className="fixed inset-0 z-50 lg:hidden flex select-none animate-fade-in">
+          {/* Semi-transparent dark backdrop */}
+          <div 
+            className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity"
+            onClick={() => setMobileMenuOpen(false)}
+          />
+
+          {/* Slide Drawer Content */}
+          <aside className="relative w-80 max-w-[85vw] bg-white h-full shadow-2xl flex flex-col justify-between z-10 overflow-y-auto">
+            <div>
+              {/* Drawer Brand Header */}
+              <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-1.5 bg-indigo-500 rounded-lg text-white">
+                    <Warehouse className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-xs sm:text-sm">ระบบสโตร์หอพัก</h3>
+                    <p className="text-[10px] text-slate-400">เมนูจัดการระบบ (Mobile & Tablet View)</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+                >
+                  <X className="h-4.5 w-4.5" />
+                </button>
+              </div>
+
+              {/* Drawer User Profile */}
+              <div className="p-4 bg-indigo-50/60 border-b border-indigo-100/60">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 bg-indigo-600 text-white font-bold rounded-xl flex items-center justify-center text-sm shadow-sm">
+                    {currentUser.fullName.charAt(0)}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-slate-900 truncate">{currentUser.fullName}</p>
+                    <span className="inline-block text-[9px] bg-indigo-100 text-indigo-700 font-bold uppercase px-1.5 py-0.5 rounded mt-0.5">
+                      {currentUser.role}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Nav Items List */}
+              <nav className="p-3 space-y-1">
+                <p className="px-3 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">เมนูหลัก</p>
+                {navItems.map((item) => {
+                  const Icon = item.icon;
+                  const active = activeTab === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => {
+                        setActiveTab(item.id);
+                        setMobileMenuOpen(false);
+                      }}
+                      className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
+                        active 
+                          ? 'bg-indigo-600 text-white shadow-sm' 
+                          : 'text-slate-700 hover:bg-slate-100 active:bg-slate-200/80'
+                      }`}
+                    >
+                      <Icon className="h-4.5 w-4.5 shrink-0" />
+                      <span className="truncate">{item.label}</span>
+                    </button>
+                  );
+                })}
+              </nav>
+            </div>
+
+            {/* Logout Footer */}
+            <div className="p-3 border-t border-slate-200 bg-slate-50">
               <button
-                key={item.id}
+                id="btn-logout-mobile-drawer"
                 onClick={() => {
-                  setActiveTab(item.id);
+                  handleLogout();
                   setMobileMenuOpen(false);
                 }}
-                className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors ${active ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'}`}
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl text-xs sm:text-sm font-bold transition-colors cursor-pointer"
               >
-                <Icon className="h-4 w-4" />
-                {item.label}
+                <LogOut className="h-4.5 w-4.5" />
+                <span>ออกจากระบบ</span>
               </button>
-            );
-          })}
-          <button
-            id="btn-logout-mobile"
-            onClick={() => {
-              handleLogout();
-              setMobileMenuOpen(false);
-            }}
-            className="w-full flex items-center gap-3 px-4 py-2.5 text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg text-xs font-semibold cursor-pointer"
-          >
-            <LogOut className="h-4 w-4" />
-            ออกจากระบบ
-          </button>
+            </div>
+          </aside>
         </div>
       )}
 
+      {/* MOBILE & TABLET BOTTOM QUICK NAVIGATION BAR (แถบเมนูด้านล่างสไตล์แอปมือถือ) */}
+      <nav id="mobile-bottom-nav" className="fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-white/95 backdrop-blur-md border-t border-slate-200 px-2 py-2 flex justify-around items-center shadow-lg select-none">
+        <button
+          onClick={() => setActiveTab('dashboard')}
+          className={`flex flex-col items-center gap-1 py-1 px-3 rounded-xl text-[10px] sm:text-xs font-bold transition-colors cursor-pointer ${
+            activeTab === 'dashboard' ? 'text-indigo-600' : 'text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <LayoutDashboard className="h-5 w-5" />
+          <span>แดชบอร์ด</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('inventory')}
+          className={`flex flex-col items-center gap-1 py-1 px-3 rounded-xl text-[10px] sm:text-xs font-bold transition-colors cursor-pointer ${
+            activeTab === 'inventory' ? 'text-indigo-600' : 'text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Package className="h-5 w-5" />
+          <span>คลังพัสดุ</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('intake')}
+          className={`flex flex-col items-center gap-1 py-1 px-3 rounded-xl text-[10px] sm:text-xs font-bold transition-colors cursor-pointer ${
+            activeTab === 'intake' ? 'text-indigo-600' : 'text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <ArrowUpRight className="h-5 w-5" />
+          <span>นำเข้า</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('withdraw')}
+          className={`flex flex-col items-center gap-1 py-1 px-3 rounded-xl text-[10px] sm:text-xs font-bold transition-colors cursor-pointer ${
+            activeTab === 'withdraw' ? 'text-indigo-600' : 'text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <ArrowDownRight className="h-5 w-5" />
+          <span>เบิกจ่าย</span>
+        </button>
+
+        <button
+          onClick={() => setMobileMenuOpen(true)}
+          className={`flex flex-col items-center gap-1 py-1 px-3 rounded-xl text-[10px] sm:text-xs font-bold transition-colors cursor-pointer ${
+            mobileMenuOpen ? 'text-indigo-600' : 'text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Menu className="h-5 w-5" />
+          <span>เมนูทั้งหมด</span>
+        </button>
+      </nav>
+
       {/* CORE CONTENT PANEL */}
-      <main id="main-content-panel" className="flex-1 overflow-y-auto p-4 md:p-8 flex flex-col">
+      <main id="main-content-panel" className="flex-1 overflow-y-auto p-4 sm:p-5 md:p-6 lg:p-8 pb-24 lg:pb-8 flex flex-col">
 
         {/* Global Firebase Background Sync Notifications */}
         {(isSyncing || syncSuccessMessage || syncError) && (

@@ -47,9 +47,9 @@ export default function Logs({ transactions, categories }: LogsProps) {
         </div>
 
         {/* Filters and Inputs */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-12 gap-3">
           {/* Search bar */}
-          <div className="md:col-span-5 relative">
+          <div className="sm:col-span-2 md:col-span-5 relative">
             <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
               <Search className="h-5 w-5" />
             </div>
@@ -64,7 +64,7 @@ export default function Logs({ transactions, categories }: LogsProps) {
           </div>
 
           {/* Type filter */}
-          <div className="md:col-span-3">
+          <div className="sm:col-span-1 md:col-span-3">
             <select
               id="logs-type-select"
               value={selectedType}
@@ -78,7 +78,7 @@ export default function Logs({ transactions, categories }: LogsProps) {
           </div>
 
           {/* Category filter */}
-          <div className="md:col-span-4 relative">
+          <div className="sm:col-span-1 md:col-span-4 relative">
             <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
               <Filter className="h-5 w-5" />
             </div>

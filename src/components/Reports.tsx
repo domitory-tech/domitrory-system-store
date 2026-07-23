@@ -8,9 +8,7 @@ import {
   Calendar, 
   Filter, 
   Download, 
-  Printer, 
   FileSpreadsheet, 
-  FileText, 
   AlertTriangle, 
   Building, 
   UserCheck, 
@@ -32,7 +30,7 @@ interface ReportsProps {
 }
 
 type ReportType = 'INTAKE' | 'WITHDRAW' | 'REMAINING';
-type ExportFormat = 'EXCEL' | 'PDF' | 'GOOGLE_SHEETS';
+type ExportFormat = 'GOOGLE_SHEETS';
 
 export default function Reports({ products, transactions, categories }: ReportsProps) {
   const [activeReport, setActiveReport] = useState<ReportType>('INTAKE');
@@ -138,14 +136,7 @@ export default function Reports({ products, transactions, categories }: ReportsP
   const handleExportConfirm = (format: ExportFormat) => {
     setIsExportModalOpen(false);
     if (!pendingExportType) return;
-
-    if (format === 'EXCEL') {
-      exportToExcel(pendingExportType);
-    } else if (format === 'GOOGLE_SHEETS') {
-      exportToGoogleSheetsFormat(pendingExportType);
-    } else {
-      exportToPdf(pendingExportType);
-    }
+    exportToGoogleSheetsFormat(pendingExportType);
   };
 
   // Function to Export with beautiful Google Sheets styled spreadsheet
@@ -262,435 +253,33 @@ export default function Reports({ products, transactions, categories }: ReportsP
     }
   };
 
-  // Function to Export CSV (Excel compatible) with UTF-8 BOM
-  const exportToExcel = (type: ReportType) => {
-    let headers: string[] = [];
-    let rows: string[][] = [];
-    let filename = '';
-
-    const bom = '\uFEFF';
-
-    if (type === 'INTAKE') {
-      filename = `รายงานการนำเข้าอุปกรณ์_${startDate}_ถึง_${endDate}.csv`;
-      headers = [
-        'ลำดับ',
-        'วัน-เวลาทำรายการ',
-        'รหัสอุปกรณ์',
-        'ชื่ออุปกรณ์',
-        'หมวดหมู่อุปกรณ์',
-        'จำนวนที่นำเข้า',
-        'หน่วยนับ',
-        'ยอดคลังก่อนหน้า',
-        'ยอดคลังล่าสุด',
-        'ผู้ทำรายการ',
-        'หมายเหตุ'
-      ];
-      rows = filteredIntakes.map((tx, idx) => [
-        String(idx + 1),
-        tx.timestamp,
-        tx.code,
-        tx.productName,
-        tx.category,
-        String(tx.quantity),
-        products.find(p => p.code === tx.code)?.unit || 'ชิ้น',
-        String(tx.prevQuantity),
-        String(tx.newQuantity),
-        tx.operator,
-        tx.note || '-'
-      ]);
-    } else if (type === 'WITHDRAW') {
-      filename = `รายงานการเบิกจ่ายอุปกรณ์_${startDate}_ถึง_${endDate}.csv`;
-      headers = [
-        'ลำดับ',
-        'วัน-เวลาทำรายการ',
-        'รหัสอุปกรณ์',
-        'ชื่ออุปกรณ์',
-        'หมวดหมู่อุปกรณ์',
-        'อาคารสถานที่จัดเก็บ',
-        'จำนวนที่เบิกจ่าย',
-        'หน่วยนับ',
-        'ผู้ทำรายการเบิกจ่าย',
-        'ผู้รับอุปกรณ์',
-        'วัตถุประสงค์ / หมายเหตุ'
-      ];
-      rows = filteredWithdrawals.map((tx, idx) => {
-        const pItem = products.find(p => p.code === tx.code);
-        return [
-          String(idx + 1),
-          tx.timestamp,
-          tx.code,
-          tx.productName,
-          tx.category,
-          pItem?.building ? `${pItem.building} (${pItem.location || '-'})` : '-',
-          String(tx.quantity),
-          pItem?.unit || 'ชิ้น',
-          tx.operator,
-          tx.recipient || '-',
-          tx.note || '-'
-        ];
-      });
-    } else if (type === 'REMAINING') {
-      filename = `รายงานอุปกรณ์คงเหลือต่ำกว่า_${remainingThreshold}_ชิ้น.csv`;
-      headers = [
-        'ลำดับ',
-        'รหัสอุปกรณ์',
-        'ชื่ออุปกรณ์',
-        'หมวดหมู่อุปกรณ์',
-        'อาคารสถานที่เก็บ',
-        'จุดเก็บพัสดุ',
-        'จำนวนคงเหลือปัจจุบัน',
-        'หน่วยนับ',
-        'เกณฑ์ขั้นต่ำเตือนภัย',
-        'อัปเดตล่าสุด'
-      ];
-      rows = filteredRemaining.map((p, idx) => [
-        String(idx + 1),
-        p.code,
-        p.name,
-        p.category,
-        p.building || '-',
-        p.location || '-',
-        String(p.quantity),
-        p.unit,
-        String(p.minStock),
-        p.updatedAt
-      ]);
-    }
-
-    // Map rows into clean CSV
-    const csvContent = bom + [
-      headers.map(h => `"${h.replace(/"/g, '""')}"`).join(','),
-      ...rows.map(r => r.map(val => `"${String(val).replace(/"/g, '""')}"`).join(','))
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', filename);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  // Function to Export PDF via browser Print Panel with elegant CSS
-  const exportToPdf = (type: ReportType) => {
-    let title = '';
-    let subtitle = '';
-    let tableHtml = '';
-
-    if (type === 'INTAKE') {
-      title = 'รายงานสรุปการนำเข้าอุปกรณ์พัสดุหอพัก';
-      subtitle = `ช่วงวันที่เลือกทำรายการ: ${startDate ? formatThaiDate(startDate) : 'เริ่มต้น'} ถึง ${endDate ? formatThaiDate(endDate) : 'ปัจจุบัน'}`;
-      
-      const tableRows = filteredIntakes.map((tx, idx) => `
-        <tr>
-          <td style="text-align: center;">${idx + 1}</td>
-          <td>${tx.timestamp}</td>
-          <td style="font-family: monospace; font-weight: bold;">${tx.code}</td>
-          <td style="font-weight: bold;">${tx.productName}</td>
-          <td>${tx.category}</td>
-          <td style="text-align: right; font-weight: bold; color: #15803d;">+${tx.quantity}</td>
-          <td style="text-align: right; color: #64748b;">${tx.prevQuantity}</td>
-          <td style="text-align: right; font-weight: bold;">${tx.newQuantity}</td>
-          <td>${tx.operator}</td>
-          <td>${tx.note || '-'}</td>
-        </tr>
-      `).join('');
-
-      tableHtml = `
-        <table>
-          <thead>
-            <tr>
-              <th style="width: 5%;">ลำดับ</th>
-              <th style="width: 15%;">วัน-เวลาทำรายการ</th>
-              <th style="width: 10%;">รหัสอุปกรณ์</th>
-              <th style="width: 25%;">ชื่ออุปกรณ์พัสดุ</th>
-              <th style="width: 15%;">หมวดหมู่อุปกรณ์</th>
-              <th style="width: 8%; text-align: right;">นำเข้า</th>
-              <th style="width: 8%; text-align: right;">คลังก่อนหน้า</th>
-              <th style="width: 8%; text-align: right;">คลังล่าสุด</th>
-              <th style="width: 12%;">ผู้ทำรายการ</th>
-              <th style="width: 10%;">หมายเหตุ</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${tableRows || '<tr><td colspan="10" style="text-align: center; padding: 20px;">ไม่พบรายการนำเข้าในช่วงเวลาดังกล่าว</td></tr>'}
-          </tbody>
-        </table>
-      `;
-    } else if (type === 'WITHDRAW') {
-      title = 'รายงานสรุปการเบิกจ่ายอุปกรณ์พัสดุหอพัก';
-      
-      const filtersDesc = [];
-      if (selectedCategory !== 'ALL') filtersDesc.push(`หมวดหมู่: ${selectedCategory}`);
-      if (selectedBuilding !== 'ALL') filtersDesc.push(`อาคาร: ${selectedBuilding}`);
-      if (operatorSearch.trim() !== '') filtersDesc.push(`ผู้เบิก/ผู้จ่าย: "${operatorSearch}"`);
-      const filtersStr = filtersDesc.length > 0 ? ` (${filtersDesc.join(', ')})` : '';
-
-      subtitle = `ช่วงวันที่เบิกจ่าย: ${startDate ? formatThaiDate(startDate) : 'เริ่มต้น'} ถึง ${endDate ? formatThaiDate(endDate) : 'ปัจจุบัน'}${filtersStr}`;
-      
-      const tableRows = filteredWithdrawals.map((tx, idx) => {
-        const pItem = products.find(p => p.code === tx.code);
-        return `
-          <tr>
-            <td style="text-align: center;">${idx + 1}</td>
-            <td>${tx.timestamp}</td>
-            <td style="font-family: monospace; font-weight: bold;">${tx.code}</td>
-            <td style="font-weight: bold;">${tx.productName}</td>
-            <td>${tx.category}</td>
-            <td>${pItem?.building ? `${pItem.building} (${pItem.location || '-'})` : '-'}</td>
-            <td style="text-align: right; font-weight: bold; color: #b45309;">-${tx.quantity}</td>
-            <td>${pItem?.unit || 'ชิ้น'}</td>
-            <td>${tx.operator}</td>
-            <td>${tx.recipient || '-'}</td>
-            <td>${tx.note || '-'}</td>
-          </tr>
-        `;
-      }).join('');
-
-      tableHtml = `
-        <table>
-          <thead>
-            <tr>
-              <th style="width: 5%;">ลำดับ</th>
-              <th style="width: 13%;">วัน-เวลาเบิกจ่าย</th>
-              <th style="width: 10%;">รหัสอุปกรณ์</th>
-              <th style="width: 20%;">ชื่ออุปกรณ์พัสดุ</th>
-              <th style="width: 12%;">หมวดหมู่อุปกรณ์</th>
-              <th style="width: 13%;">อาคารสถานที่เก็บ</th>
-              <th style="width: 8%; text-align: right;">จำนวนเบิก</th>
-              <th style="width: 5%;">หน่วย</th>
-              <th style="width: 10%;">ผู้บันทึกเบิก</th>
-              <th style="width: 10%;">ผู้รับพัสดุ</th>
-              <th style="width: 10%;">วัตถุประสงค์</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${tableRows || '<tr><td colspan="11" style="text-align: center; padding: 20px;">ไม่พบรายการเบิกจ่ายในช่วงเวลาหรือการกรองดังกล่าว</td></tr>'}
-          </tbody>
-        </table>
-      `;
-    } else if (type === 'REMAINING') {
-      title = 'รายงานสรุปปริมาณอุปกรณ์พัสดุคงเหลือในคลัง';
-      subtitle = `เงื่อนไขสินค้าคงเหลือน้อยกว่าหรือเท่ากับ: ${remainingThreshold} ชิ้น (หมวดหมู่: ${remainingCategory === 'ALL' ? 'ทุกหมวดหมู่' : remainingCategory})`;
-
-      const tableRows = filteredRemaining.map((p, idx) => `
-        <tr>
-          <td style="text-align: center;">${idx + 1}</td>
-          <td style="font-family: monospace; font-weight: bold;">${p.code}</td>
-          <td style="font-weight: bold;">${p.name}</td>
-          <td>${p.category}</td>
-          <td>${p.building || '-'}</td>
-          <td>${p.location || '-'}</td>
-          <td style="text-align: right; font-weight: bold; color: ${p.quantity === 0 ? '#e11d48' : p.quantity <= p.minStock ? '#b45309' : '#1e293b'};">
-            ${p.quantity} ${p.unit}
-          </td>
-          <td style="text-align: right; color: #64748b;">${p.minStock} ${p.unit}</td>
-          <td style="text-align: center;">
-            <span style="padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; background-color: ${p.quantity === 0 ? '#ffe4e6; color: #be123c;' : p.quantity <= p.minStock ? '#fef3c7; color: #b45309;' : '#f1f5f9; color: #475569;'}">
-              ${p.quantity === 0 ? 'สินค้าหมดเกลี้ยง' : p.quantity <= p.minStock ? 'ต่ำกว่าเกณฑ์เตือน' : 'ปกติ'}
-            </span>
-          </td>
-          <td>${p.updatedAt}</td>
-        </tr>
-      `).join('');
-
-      tableHtml = `
-        <table>
-          <thead>
-            <tr>
-              <th style="width: 5%;">ลำดับ</th>
-              <th style="width: 10%;">รหัสอุปกรณ์</th>
-              <th style="width: 25%;">ชื่ออุปกรณ์พัสดุ</th>
-              <th style="width: 15%;">หมวดหมู่อุปกรณ์</th>
-              <th style="width: 12%;">อาคารสถานที่เก็บ</th>
-              <th style="width: 8%;">จุดเก็บพัสดุ</th>
-              <th style="width: 12%; text-align: right;">จำนวนคงเหลือ</th>
-              <th style="width: 12%; text-align: right;">เกณฑ์ขั้นต่ำสั่งซื้อ</th>
-              <th style="width: 13%; text-align: center;">สถานะ</th>
-              <th style="width: 13%;">อัปเดตล่าสุด</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${tableRows || '<tr><td colspan="10" style="text-align: center; padding: 20px;">ไม่พบรายการพัสดุคงเหลือที่ตรงตามเงื่อนไขด้านบน</td></tr>'}
-          </tbody>
-        </table>
-      `;
-    }
-
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      alert('กรุณาเปิดการอนุญาต Pop-up บนเบราว์เซอร์ของคุณเพื่อเรียกดูรายงาน PDF');
-      return;
-    }
-
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>${title}</title>
-          <style>
-            @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&display=swap');
-            body { 
-              font-family: 'Sarabun', 'Inter', sans-serif; 
-              padding: 40px; 
-              color: #1e293b; 
-              font-size: 11px;
-              line-height: 1.5;
-            }
-            .header-container {
-              border-bottom: 2px solid #334155;
-              padding-bottom: 12px;
-              margin-bottom: 24px;
-            }
-            .title { 
-              font-size: 18px; 
-              font-weight: 800; 
-              color: #1e293b; 
-              text-align: center; 
-              margin: 0 0 4px 0;
-            }
-            .subtitle { 
-              font-size: 11px; 
-              color: #475569; 
-              text-align: center; 
-              margin: 0;
-              font-weight: 600;
-            }
-            .meta-info {
-              display: flex;
-              justify-content: space-between;
-              margin-bottom: 16px;
-              color: #64748b;
-              font-size: 10px;
-            }
-            table { 
-              width: 100%; 
-              border-collapse: collapse; 
-              margin-top: 10px; 
-              font-size: 10.5px; 
-            }
-            th, td { 
-              border: 1px solid #cbd5e1; 
-              padding: 8px 10px; 
-              text-align: left; 
-              word-break: break-word;
-            }
-            th { 
-              background-color: #f1f5f9; 
-              font-weight: 700; 
-              color: #1e293b; 
-              text-transform: uppercase;
-              font-size: 11px;
-            }
-            tr:nth-child(even) { 
-              background-color: #f8fafc; 
-            }
-            .footer-signature {
-              margin-top: 60px;
-              display: flex;
-              justify-content: space-between;
-              align-items: flex-end;
-              font-size: 11px;
-            }
-            .signature-box {
-              text-align: center;
-              width: 250px;
-            }
-            .signature-line {
-              border-bottom: 1px dashed #94a3b8;
-              margin-bottom: 8px;
-              height: 40px;
-            }
-            .system-credit {
-              margin-top: 40px;
-              text-align: center;
-              font-size: 9px;
-              color: #94a3b8;
-              border-top: 1px solid #e2e8f0;
-              padding-top: 12px;
-            }
-            @media print {
-              body { padding: 10px; }
-              thead { display: table-header-group; }
-              tr { page-break-inside: avoid; }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="header-container">
-            <h1 class="title">${title}</h1>
-            <p class="subtitle">${subtitle}</p>
-          </div>
-          
-          <div class="meta-info">
-            <div><strong>หน่วยงาน:</strong> สำนักงานหอพักและคลังพัสดุสโตร์</div>
-            <div><strong>วันที่พิมพ์รายงาน:</strong> ${new Date().toLocaleDateString('th-TH')} เวลา ${new Date().toLocaleTimeString('th-TH')} น.</div>
-          </div>
-
-          ${tableHtml}
-
-          <div class="footer-signature">
-            <div class="signature-box">
-              <div class="signature-line"></div>
-              <p>ลงชื่อ........................................................................</p>
-              <p>( ผู้ตรวจสอบรายงาน )</p>
-              <p>ตำแหน่ง: ..............................................................</p>
-            </div>
-            
-            <div class="signature-box">
-              <div class="signature-line"></div>
-              <p>ลงชื่อ........................................................................</p>
-              <p>( ผู้ลงบันทึกข้อมูลคลังพัสดุ )</p>
-              <p>ตำแหน่ง: ..............................................................</p>
-            </div>
-          </div>
-
-          <div class="system-credit">
-            จัดทำและอนุมัติพิมพ์โดยระบบจัดการฐานข้อมูลสโตร์หอพักกลาง
-          </div>
-
-          <script>
-            window.onload = function() {
-              setTimeout(function() {
-                window.print();
-              }, 400);
-            };
-          </script>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
-  };
-
   return (
     <div id="reports-tab-content" className="space-y-6">
       
       {/* 1. Header Overview Tab Section */}
-      <div id="reports-header" className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div id="reports-header" className="bg-white p-5 md:p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
         <div>
-          <h2 className="text-xl font-bold text-slate-900">ระบบรายงานสถิติคลังและพิมพ์เอกสาร (Stock Reports & Exports)</h2>
-          <p className="text-sm text-slate-500 mt-1">
-            สร้างสรุปรายงานวิเคราะห์พัสดุแยกตามความต้องการ กรองวันที่ ข้อมูล และเขียนส่งออกไปยัง Excel หรือพิมพ์ PDF สำหรับลงนามรับรอง
+          <h2 className="text-lg sm:text-xl font-bold text-slate-900">ระบบรายงานสถิติคลังและพิมพ์เอกสาร (Stock Reports & Exports)</h2>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1">
+            สร้างสรุปรายงานวิเคราะห์พัสดุแยกตามความต้องการ กรองวันที่ ข้อมูล และส่งออกในรูปแบบ Google Sheets
           </p>
         </div>
-        <div className="flex bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
+        <div className="flex flex-wrap bg-slate-100 p-1 rounded-2xl border border-slate-200 w-full lg:w-auto shrink-0">
           <button
             onClick={() => setActiveReport('INTAKE')}
-            className={`px-4 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${activeReport === 'INTAKE' ? 'bg-white text-indigo-700 shadow-sm border border-slate-200/50' : 'text-slate-600 hover:text-slate-900'}`}
+            className={`flex-1 sm:flex-initial px-3.5 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer text-center ${activeReport === 'INTAKE' ? 'bg-white text-indigo-700 shadow-sm border border-slate-200/50' : 'text-slate-600 hover:text-slate-900'}`}
           >
-            📥 รายงานนำเข้าอุปกรณ์
+            📥 รายงานนำเข้า
           </button>
           <button
             onClick={() => setActiveReport('WITHDRAW')}
-            className={`px-4 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${activeReport === 'WITHDRAW' ? 'bg-white text-indigo-700 shadow-sm border border-slate-200/50' : 'text-slate-600 hover:text-slate-900'}`}
+            className={`flex-1 sm:flex-initial px-3.5 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer text-center ${activeReport === 'WITHDRAW' ? 'bg-white text-indigo-700 shadow-sm border border-slate-200/50' : 'text-slate-600 hover:text-slate-900'}`}
           >
-            📤 รายงานเบิกจ่ายอุปกรณ์
+            📤 รายงานเบิกจ่าย
           </button>
           <button
             onClick={() => setActiveReport('REMAINING')}
-            className={`px-4 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${activeReport === 'REMAINING' ? 'bg-white text-indigo-700 shadow-sm border border-slate-200/50' : 'text-slate-600 hover:text-slate-900'}`}
+            className={`flex-1 sm:flex-initial px-3.5 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer text-center ${activeReport === 'REMAINING' ? 'bg-white text-indigo-700 shadow-sm border border-slate-200/50' : 'text-slate-600 hover:text-slate-900'}`}
           >
             📦 รายงานอุปกรณ์คงเหลือ
           </button>
@@ -1173,26 +762,11 @@ export default function Reports({ products, transactions, categories }: ReportsP
 
             {/* Modal Content - Elegant Choice Cards */}
             <div className="p-6 space-y-4">
-              <p className="text-xs font-semibold text-slate-500">กรุณาเลือกรูปแบบเอกสารที่คุณต้องการเพื่อจัดทำสถิติหรือจัดพริ้นต์ลงนาม:</p>
+              <p className="text-xs font-semibold text-slate-500">กรุณายืนยันการจัดทำและส่งออกรายงานในรูปแบบ Google Sheets:</p>
               
               <div className="grid grid-cols-1 gap-3">
                 
-                {/* Format 1: EXCEL (CSV) */}
-                <button
-                  type="button"
-                  onClick={() => handleExportConfirm('EXCEL')}
-                  className="flex items-center gap-4 p-4 border border-slate-200 hover:border-emerald-300 bg-slate-50 hover:bg-emerald-50/40 rounded-2xl text-left transition-all cursor-pointer group active:scale-98"
-                >
-                  <div className="p-3 bg-emerald-100 text-emerald-700 rounded-xl group-hover:scale-105 transition-all">
-                    <FileSpreadsheet className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-slate-800 text-sm group-hover:text-emerald-900 transition-colors">ส่งออกไฟล์ข้อมูล Excel (.csv)</h4>
-                    <p className="text-[11px] text-slate-500 mt-0.5">รองรับสูตร คัดลอกเปิดใน Excel ภาษาไทยสมบูรณ์แบบไม่เพี้ยน</p>
-                  </div>
-                </button>
-
-                {/* Format 1.5: GOOGLE SHEETS */}
+                {/* Format: GOOGLE SHEETS */}
                 <button
                   type="button"
                   onClick={() => handleExportConfirm('GOOGLE_SHEETS')}
@@ -1204,21 +778,6 @@ export default function Reports({ products, transactions, categories }: ReportsP
                   <div>
                     <h4 className="font-bold text-slate-800 text-sm group-hover:text-emerald-700 transition-colors">ส่งออกในรูปแบบ Google Sheets</h4>
                     <p className="text-[11px] text-slate-500 mt-0.5">จัดระเบียบตารางพร้อมสไตล์แบรนด์ Google Sheets และแทรกวันเวลาทำรายการละเอียด</p>
-                  </div>
-                </button>
-
-                {/* Format 2: PDF (Print) */}
-                <button
-                  type="button"
-                  onClick={() => handleExportConfirm('PDF')}
-                  className="flex items-center gap-4 p-4 border border-slate-200 hover:border-rose-300 bg-slate-50 hover:bg-rose-50/40 rounded-2xl text-left transition-all cursor-pointer group active:scale-98"
-                >
-                  <div className="p-3 bg-rose-100 text-rose-700 rounded-xl group-hover:scale-105 transition-all">
-                    <FileText className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-slate-800 text-sm group-hover:text-rose-900 transition-colors">ส่งออกพิมพ์เอกสาร PDF (.pdf)</h4>
-                    <p className="text-[11px] text-slate-500 mt-0.5">จัดรูปแบบรายงานทางการสวยงาม จัดหน้าสำหรับการเซ็นรับรองและสั่งพิมพ์</p>
                   </div>
                 </button>
 

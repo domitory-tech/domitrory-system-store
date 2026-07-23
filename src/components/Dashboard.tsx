@@ -30,35 +30,33 @@ export default function Dashboard({ products, transactions, onNavigateToTab, onS
   return (
     <div id="dashboard-tab-content" className="space-y-6">
       {/* Header Panel */}
-      <div id="dashboard-header" className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-2xl border border-slate-200">
+      <div id="dashboard-header" className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 md:p-6 rounded-2xl border border-slate-200 shadow-sm">
         <div>
-          <h2 id="dashboard-heading" className="text-xl font-bold text-slate-900">ภาพรวมสโตร์และคลังพัสดุหอพัก</h2>
-          <p className="text-sm text-slate-500 mt-1">สรุปสถานะพัสดุคงเหลือ จุดสั่งซื้อ และรายการเคลื่อนไหวแบบเรียลไทม์</p>
+          <h2 id="dashboard-heading" className="text-lg sm:text-xl font-bold text-slate-900">ภาพรวมสโตร์และคลังพัสดุหอพัก</h2>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1">สรุปสถานะพัสดุคงเหลือ จุดสั่งซื้อ และรายการเคลื่อนไหวแบบเรียลไทม์</p>
         </div>
-        <div className="flex gap-2.5">
+        <div className="flex gap-2.5 w-full sm:w-auto shrink-0">
           <button
             id="btn-shortcut-intake"
             onClick={() => onNavigateToTab('intake')}
-            className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium shadow-sm cursor-pointer transition-all active:scale-95"
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs sm:text-sm font-medium shadow-sm cursor-pointer transition-all active:scale-95"
           >
-            <ArrowUpRight className="h-4.5 w-4.5" />
-            นำเข้าพัสดุ
+            <ArrowUpRight className="h-4.5 w-4.5 shrink-0" />
+            <span>นำเข้าพัสดุ</span>
           </button>
           <button
             id="btn-shortcut-withdraw"
             onClick={() => onNavigateToTab('withdraw')}
-            className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-sm font-medium shadow-sm cursor-pointer transition-all active:scale-95"
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs sm:text-sm font-medium shadow-sm cursor-pointer transition-all active:scale-95"
           >
-            <ArrowDownRight className="h-4.5 w-4.5" />
-            เบิกจ่ายพัสดุ
+            <ArrowDownRight className="h-4.5 w-4.5 shrink-0" />
+            <span>เบิกจ่ายพัสดุ</span>
           </button>
         </div>
       </div>
 
-
-
       {/* KPI Stats Grid */}
-      <div id="dashboard-kpi-grid" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      <div id="dashboard-kpi-grid" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">
         {/* KPI 1: Total Items */}
         <div id="kpi-total-items" className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
           <div className="p-3.5 bg-blue-50 text-blue-600 rounded-xl">
